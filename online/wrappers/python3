@@ -1,0 +1,5 @@
+#!/system/bin/sh
+# python3 wrapper — PYTHONHOME for stdlib, no LD_LIBRARY_PATH (poisons bionic)
+D=/data/local/tmp/mimocode
+export PYTHONHOME="$D/lib/pyhome"
+exec "$D/lib/ld-linux-aarch64.so.1" --library-path "$D/lib" "$D/lib/python3.13" "$@"

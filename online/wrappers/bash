@@ -1,0 +1,4 @@
+#!/system/bin/sh
+# bash wrapper — NO LD_LIBRARY_PATH export (poisons bionic)
+D=/data/local/tmp/mimocode
+exec "$D/lib/ld-linux-aarch64.so.1" --library-path "$D/lib" "$D/lib/bash" "$@"

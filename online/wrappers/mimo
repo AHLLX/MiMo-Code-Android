@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# MiMo Code Android — proot wrapper
+# proot overlays fake /etc files → no LD_PRELOAD, no dns-hook.so needed
+D=/data/local/tmp/mimocode
+R=$D/rootfs
+export HOME="$D/home"
+export MIMOCODE_HOME="$D/home"
+export PYTHONHOME="$D/lib/pyhome"
+export PATH="$D/lib:$PATH"
+[ -x "$D/lib/bash" ] && export SHELL="$D/lib/bash"
+
+exec "$D/lib/proot" \
+  -b "$D/lib:/lib" \
+  -b "$R/etc/resolv.conf:/etc/resolv.conf" \
+  -b "$R/etc/hosts:/etc/hosts" \
+  -b "$R/etc/nsswitch.conf:/etc/nsswitch.conf" \
+  -b "$R/etc/ssl:/etc/ssl" \
+  "$D/lib/ld-linux-aarch64.so.1" --library-path "$D/lib" "$D/bin/mimo.real" "$@"
