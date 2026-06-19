@@ -170,10 +170,11 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 
 ### v1.0.1
 
-- 完善 Python 运行时：新增 9 个 Debian 库（libssl / libcrypto / libzstd / libffi / libsqlite3 / libbz2 / liblzma / libreadline / libncursesw / libgdbm）
+- 完善 Python 运行时：新增 10 个 Debian 库
+- 新增实用工具：nano、less、file、tree
 - 修复 urllib HTTPS 证书验证：wrapper 新增 `SSL_CERT_FILE`
 - 修复菜单"Update/Repair"选项无效
-- `check_integrity` 覆盖所有运行时库依赖
+- `check_integrity` 覆盖所有运行时库和工具
 
 <details><summary>v1.0.0</summary>
 

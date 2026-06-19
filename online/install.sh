@@ -129,6 +129,11 @@ check_integrity() {
     [ -f "$LIB_DIR/libncursesw.so.6" ] || missing="$missing libncursesw"
     [ -f "$LIB_DIR/libgdbm.so.6" ] || missing="$missing libgdbm"
     [ -f "$LIB_DIR/libgdbm_compat.so.4" ] || missing="$missing libgdbm-compat"
+    [ -f "$LIB_DIR/libmagic.so.1" ] || missing="$missing libmagic"
+    [ -f "$LIB_DIR/nano" ] || missing="$missing nano"
+    [ -f "$LIB_DIR/less" ] || missing="$missing less"
+    [ -f "$LIB_DIR/file" ] || missing="$missing file"
+    [ -f "$LIB_DIR/tree" ] || missing="$missing tree"
     [ -f "$WRAPPER" ] || missing="$missing wrapper"
     [ -z "$missing" ]
 }
@@ -366,10 +371,38 @@ GDBMC_DEB="libgdbm-compat4t64_1.26-1+b2_arm64.deb"
 [ -f "$CACHE/libgdbmc.deb" ] && [ -s "$CACHE/libgdbmc.deb" ] && ok "  libgdbm-compat (cached)" || \
     dl "${DEBIAN_MIRROR}/g/gdbm/${GDBMC_DEB}" "$CACHE/libgdbmc.deb" "libgdbm-compat"
 
+# libmagic (file command dependency)
+[ -f "$CACHE/libmagic.deb" ] && [ -s "$CACHE/libmagic.deb" ] && ok "  libmagic (cached)" || \
+    dl "${DEBIAN_MIRROR}/f/file/libmagic1t64_5.47-4_arm64.deb" "$CACHE/libmagic.deb" "libmagic"
+[ -f "$CACHE/libmagic-mgc.deb" ] && [ -s "$CACHE/libmagic-mgc.deb" ] && ok "  libmagic-mgc (cached)" || \
+    dl "${DEBIAN_MIRROR}/f/file/libmagic-mgc_5.47-4_arm64.deb" "$CACHE/libmagic-mgc.deb" "libmagic-mgc"
+
 # pip wheel
 PIP_DEB="python3-pip-whl_26.1.2+dfsg-1_all.deb"
 [ -f "$CACHE/pip.deb" ] && [ -s "$CACHE/pip.deb" ] && ok "  pip (cached)" || \
     dl "${DEBIAN_MIRROR}/p/python-pip/${PIP_DEB}" "$CACHE/pip.deb" "pip"
+
+# ============================================================
+# 2.5 Tools (nano, less, file, tree)
+# ============================================================
+echo ""
+info "[2.5/5] Downloading tools..."
+
+# nano (text editor)
+[ -f "$CACHE/nano.deb" ] && [ -s "$CACHE/nano.deb" ] && ok "  nano (cached)" || \
+    dl "${DEBIAN_MIRROR}/n/nano/nano_9.0-1_arm64.deb" "$CACHE/nano.deb" "nano"
+
+# less (pager)
+[ -f "$CACHE/less.deb" ] && [ -s "$CACHE/less.deb" ] && ok "  less (cached)" || \
+    dl "${DEBIAN_MIRROR}/l/less/less_668-1+b1_arm64.deb" "$CACHE/less.deb" "less"
+
+# file (file type detection)
+[ -f "$CACHE/file.deb" ] && [ -s "$CACHE/file.deb" ] && ok "  file (cached)" || \
+    dl "${DEBIAN_MIRROR}/f/file/file_5.47-4_arm64.deb" "$CACHE/file.deb" "file"
+
+# tree (directory listing)
+[ -f "$CACHE/tree.deb" ] && [ -s "$CACHE/tree.deb" ] && ok "  tree (cached)" || \
+    dl "${DEBIAN_MIRROR}/t/tree/tree_2.3.2-1_arm64.deb" "$CACHE/tree.deb" "tree"
 
 # ============================================================
 # 3. Extract & install
@@ -557,6 +590,29 @@ if [ -f "$CACHE/pip.deb" ]; then
     fi
 fi
 
+# --- tools (nano, less, file, tree) ---
+for tool in nano less file tree; do
+    if [ -f "$CACHE/${tool}.deb" ]; then
+        extract_deb_libs "$CACHE/${tool}.deb" "$tool" "$CACHE"
+        BIN=$(find "$CACHE/_tmp_${tool}" -name "$tool" -type f 2>/dev/null | head -1)
+        [ -n "$BIN" ] && [ -s "$BIN" ] && { cp -f "$BIN" "$LIB_DIR/${tool}"; chmod 755 "$LIB_DIR/${tool}"; ok "  $tool"; } || warn "  $tool not found"
+    fi
+done
+
+# libmagic (file command dependency)
+if [ -f "$CACHE/libmagic.deb" ]; then
+    extract_deb_libs "$CACHE/libmagic.deb" "libmagic" "$CACHE"
+    f=$(find "$CACHE/_tmp_libmagic" -name "libmagic.so.1*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libmagic.so.1"; chmod 755 "$LIB_DIR/libmagic.so.1"; ok "  libmagic"; } || warn "  libmagic not found"
+fi
+
+# file magic database
+if [ -f "$CACHE/libmagic-mgc.deb" ]; then
+    extract_deb_libs "$CACHE/libmagic-mgc.deb" "magic-mgc" "$CACHE"
+    MAGIC=$(find "$CACHE/_tmp_magic-mgc" -name "magic.mgc" -type f 2>/dev/null | head -1)
+    [ -n "$MAGIC" ] && { cp -f "$MAGIC" "$LIB_DIR/magic.mgc"; ok "  magic.mgc"; } || warn "  magic.mgc not found"
+fi
+
 # ============================================================
 # 4. proot + rootfs (DNS / SSL / NSS for glibc)
 # ============================================================
@@ -697,6 +753,23 @@ exec ${LIB_DIR}/ld-linux-aarch64.so.1 --library-path ${LIB_DIR} ${LIB_DIR}/pytho
 WEOF
 chmod 755 "$TOOL_DIR/python3"
 
+# Tool wrappers (nano, less, file, tree)
+for tool in nano less tree; do
+    cat > "$TOOL_DIR/${tool}" << WEOF
+#!/system/bin/sh
+exec ${LIB_DIR}/ld-linux-aarch64.so.1 --library-path ${LIB_DIR} ${LIB_DIR}/${tool} "\$@"
+WEOF
+    chmod 755 "$TOOL_DIR/${tool}"
+done
+
+# file needs MAGIC path
+cat > "$TOOL_DIR/file" << WEOF
+#!/system/bin/sh
+export MAGIC=${LIB_DIR}/magic.mgc
+exec ${LIB_DIR}/ld-linux-aarch64.so.1 --library-path ${LIB_DIR} ${LIB_DIR}/file "\$@"
+WEOF
+chmod 755 "$TOOL_DIR/file"
+
 # Fallback mimo shortcut
 if [ "$WRAPPER" != "/data/local/tmp/mimo" ]; then
     cat > /data/local/tmp/mimo << WEOF
@@ -725,6 +798,13 @@ export SSL_CERT_FILE="${ROOTFS}/etc/ssl/certs/ca-certificates.crt"
 exec ${LIB_DIR}/ld-linux-aarch64.so.1 --library-path ${LIB_DIR} ${LIB_DIR}/python3.13 "\$@"
 WEOF
     chmod 755 /data/adb/ksu/bin/python3 2>/dev/null
+    for tool in nano less file tree; do
+        cat > "/data/adb/ksu/bin/${tool}" << WEOF
+#!/system/bin/sh
+exec ${TOOL_DIR}/${tool} "\$@"
+WEOF
+        chmod 755 "/data/adb/ksu/bin/${tool}" 2>/dev/null
+    done
 fi
 
 ok "wrappers ready"

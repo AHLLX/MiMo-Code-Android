@@ -182,10 +182,11 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 
 ### v1.0.1
 
-- Complete Python runtime: add 9 Debian libraries (libssl / libcrypto / libzstd / libffi / libsqlite3 / libbz2 / liblzma / libreadline / libncursesw / libgdbm)
+- Complete Python runtime: add 10 Debian libraries
+- Add utility tools: nano, less, file, tree
 - Fix urllib HTTPS certificate verification: add `SSL_CERT_FILE` to wrappers
 - Fix non-functional "Update/Repair" menu option
-- `check_integrity` covers all runtime library dependencies
+- `check_integrity` covers all runtime libs and tools
 
 <details><summary>v1.0.0</summary>
 
