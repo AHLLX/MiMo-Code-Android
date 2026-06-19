@@ -118,6 +118,17 @@ check_integrity() {
     [ -f "$LIB_DIR/ld-linux-aarch64.so.1" ] || missing="$missing glibc"
     [ -f "$LIB_DIR/bash" ] || missing="$missing bash"
     [ -f "$LIB_DIR/python3.13.bin" ] || missing="$missing python3"
+    [ -f "$LIB_DIR/libssl.so.3" ] || missing="$missing libssl"
+    [ -f "$LIB_DIR/libcrypto.so.3" ] || missing="$missing libcrypto"
+    [ -f "$LIB_DIR/libzstd.so.1" ] || missing="$missing libzstd"
+    [ -f "$LIB_DIR/libffi.so.8" ] || missing="$missing libffi"
+    [ -f "$LIB_DIR/libsqlite3.so.0" ] || missing="$missing libsqlite3"
+    [ -f "$LIB_DIR/libbz2.so.1.0" ] || missing="$missing libbz2"
+    [ -f "$LIB_DIR/liblzma.so.5" ] || missing="$missing liblzma"
+    [ -f "$LIB_DIR/libreadline.so.8" ] || missing="$missing libreadline"
+    [ -f "$LIB_DIR/libncursesw.so.6" ] || missing="$missing libncursesw"
+    [ -f "$LIB_DIR/libgdbm.so.6" ] || missing="$missing libgdbm"
+    [ -f "$LIB_DIR/libgdbm_compat.so.4" ] || missing="$missing libgdbm-compat"
     [ -f "$WRAPPER" ] || missing="$missing wrapper"
     [ -z "$missing" ]
 }
@@ -153,6 +164,7 @@ do_menu() {
     printf "  Select: "
     read CHOICE
     case "$CHOICE" in
+        1) return 1 ;;
         2) do_uninstall ;;
         *) exit 0 ;;
     esac
@@ -168,7 +180,7 @@ echo "     ___      _______      _______        __    __         ______    __  _
 echo "    /   \    |   _   \   |   ____|      |  |  |  |        /  __  \  |  |/  / |  |"
 echo "   /  ^  \   |  |_)  |   |  |__         |  |  |  |       |  |  |  | |  '  /  |  |"
 echo "  /  /_\  \  |      /    |   __|        |  |  |  |       |  |  |  | |    <   |  |"
-echo " /  _____  \ |  |\  \--. |  |____       |  \--'  |       |  \--'  | |  .  \  |__|"
+echo " /  _____  \ |  |\  \__. |  |____       |  '--'  |       |  '--'  | |  .  \  |__|"
 echo "/__/     \__\| _| \____| |_______|       \______/         \______/  |__|\__\ (__)"
 echo "---------------------------------------------------------------------------------"
 printf "${NC}"
@@ -179,7 +191,7 @@ START_TIME=$(date +%s)
 
 # ---------- Pre-checks ----------
 [ "$(id -u)" = "0" ] || err "ROOT required"
-is_installed && do_menu
+is_installed && do_menu || true
 [ -x "$BB" ] || err "KernelSU busybox required"
 
 ARCH=$(uname -m)
@@ -304,6 +316,56 @@ EXPAT_DEB="libexpat1_2.7.1-2_arm64.deb"
 [ -f "$CACHE/expat.deb" ] && [ -s "$CACHE/expat.deb" ] && ok "  libexpat (cached)" || \
     dl "${DEBIAN_MIRROR}/e/expat/${EXPAT_DEB}" "$CACHE/expat.deb" "libexpat"
 
+# libssl (OpenSSL runtime for Python pip HTTPS)
+OPENSSL_VER="3.6.3-1"
+OPENSSL_DEB="libssl3t64_${OPENSSL_VER}_arm64.deb"
+[ -f "$CACHE/libssl.deb" ] && [ -s "$CACHE/libssl.deb" ] && ok "  libssl (cached)" || \
+    dl "${DEBIAN_MIRROR}/o/openssl/${OPENSSL_DEB}" "$CACHE/libssl.deb" "libssl"
+
+# libzstd (OpenSSL dependency)
+ZSTD_DEB="libzstd1_1.5.7+dfsg-1_arm64.deb"
+[ -f "$CACHE/libzstd.deb" ] && [ -s "$CACHE/libzstd.deb" ] && ok "  libzstd (cached)" || \
+    dl "${DEBIAN_MIRROR}/libz/libzstd/${ZSTD_DEB}" "$CACHE/libzstd.deb" "libzstd"
+
+# libffi (ctypes dependency)
+FFI_DEB="libffi8_3.5.2-4_arm64.deb"
+[ -f "$CACHE/libffi.deb" ] && [ -s "$CACHE/libffi.deb" ] && ok "  libffi (cached)" || \
+    dl "${DEBIAN_MIRROR}/libf/libffi/${FFI_DEB}" "$CACHE/libffi.deb" "libffi"
+
+# libsqlite3 (sqlite3 dependency)
+SQLITE_DEB="libsqlite3-0_3.53.2-1_arm64.deb"
+[ -f "$CACHE/libsqlite3.deb" ] && [ -s "$CACHE/libsqlite3.deb" ] && ok "  libsqlite3 (cached)" || \
+    dl "${DEBIAN_MIRROR}/s/sqlite3/${SQLITE_DEB}" "$CACHE/libsqlite3.deb" "libsqlite3"
+
+# libbz2 (bz2 module)
+BZ2_DEB="libbz2-1.0_1.0.8-6+b2_arm64.deb"
+[ -f "$CACHE/libbz2.deb" ] && [ -s "$CACHE/libbz2.deb" ] && ok "  libbz2 (cached)" || \
+    dl "${DEBIAN_MIRROR}/b/bzip2/${BZ2_DEB}" "$CACHE/libbz2.deb" "libbz2"
+
+# liblzma (lzma module)
+LZMA_DEB="liblzma5_5.8.3-1_arm64.deb"
+[ -f "$CACHE/liblzma.deb" ] && [ -s "$CACHE/liblzma.deb" ] && ok "  liblzma (cached)" || \
+    dl "${DEBIAN_MIRROR}/x/xz-utils/${LZMA_DEB}" "$CACHE/liblzma.deb" "liblzma"
+
+# libreadline + libncursesw (readline / curses)
+RL_DEB="libreadline8t64_8.3-4_arm64.deb"
+[ -f "$CACHE/libreadline.deb" ] && [ -s "$CACHE/libreadline.deb" ] && ok "  libreadline (cached)" || \
+    dl "${DEBIAN_MIRROR}/r/readline/${RL_DEB}" "$CACHE/libreadline.deb" "libreadline"
+
+NCURSESW_DEB="libncursesw6_6.6+20251231-1+b1_arm64.deb"
+[ -f "$CACHE/libncursesw.deb" ] && [ -s "$CACHE/libncursesw.deb" ] && ok "  libncursesw (cached)" || \
+    dl "${DEBIAN_MIRROR}/n/ncurses/${NCURSESW_DEB}" "$CACHE/libncursesw.deb" "libncursesw"
+
+# libgdbm (dbm module)
+GDBM_DEB="libgdbm6t64_1.26-1+b2_arm64.deb"
+[ -f "$CACHE/libgdbm.deb" ] && [ -s "$CACHE/libgdbm.deb" ] && ok "  libgdbm (cached)" || \
+    dl "${DEBIAN_MIRROR}/g/gdbm/${GDBM_DEB}" "$CACHE/libgdbm.deb" "libgdbm"
+
+# libgdbm-compat (dbm.gnu / gdbm module)
+GDBMC_DEB="libgdbm-compat4t64_1.26-1+b2_arm64.deb"
+[ -f "$CACHE/libgdbmc.deb" ] && [ -s "$CACHE/libgdbmc.deb" ] && ok "  libgdbm-compat (cached)" || \
+    dl "${DEBIAN_MIRROR}/g/gdbm/${GDBMC_DEB}" "$CACHE/libgdbmc.deb" "libgdbm-compat"
+
 # pip wheel
 PIP_DEB="python3-pip-whl_26.1.2+dfsg-1_all.deb"
 [ -f "$CACHE/pip.deb" ] && [ -s "$CACHE/pip.deb" ] && ok "  pip (cached)" || \
@@ -408,6 +470,79 @@ if [ -f "$CACHE/zlib.deb" ]; then
     [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libz.so.1"; chmod 755 "$LIB_DIR/libz.so.1"; ok "  zlib"; } || warn "  zlib not found"
 fi
 
+# --- libssl (OpenSSL - required for Python HTTPS/pip) ---
+if [ -f "$CACHE/libssl.deb" ]; then
+    extract_deb_libs "$CACHE/libssl.deb" "libssl" "$CACHE"
+    f=$(find "$CACHE/_tmp_libssl" -name "libssl.so.3*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libssl.so.3"; chmod 755 "$LIB_DIR/libssl.so.3"; }
+    f=$(find "$CACHE/_tmp_libssl" -name "libcrypto.so.3*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libcrypto.so.3"; chmod 755 "$LIB_DIR/libcrypto.so.3"; }
+    ok "  libssl (OpenSSL)"
+fi
+
+# --- libzstd (OpenSSL compression dependency) ---
+if [ -f "$CACHE/libzstd.deb" ]; then
+    extract_deb_libs "$CACHE/libzstd.deb" "libzstd" "$CACHE"
+    f=$(find "$CACHE/_tmp_libzstd" -name "libzstd.so.1*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libzstd.so.1"; chmod 755 "$LIB_DIR/libzstd.so.1"; ok "  libzstd"; } || warn "  libzstd not found"
+fi
+
+# --- libffi (ctypes dependency) ---
+if [ -f "$CACHE/libffi.deb" ]; then
+    extract_deb_libs "$CACHE/libffi.deb" "libffi" "$CACHE"
+    f=$(find "$CACHE/_tmp_libffi" -name "libffi.so.8*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libffi.so.8"; chmod 755 "$LIB_DIR/libffi.so.8"; ok "  libffi"; } || warn "  libffi not found"
+fi
+
+# --- libsqlite3 (sqlite3 dependency) ---
+if [ -f "$CACHE/libsqlite3.deb" ]; then
+    extract_deb_libs "$CACHE/libsqlite3.deb" "libsqlite3" "$CACHE"
+    f=$(find "$CACHE/_tmp_libsqlite3" -name "libsqlite3.so.3*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libsqlite3.so.0"; chmod 755 "$LIB_DIR/libsqlite3.so.0"; ok "  libsqlite3"; } || warn "  libsqlite3 not found"
+fi
+
+# --- libbz2 (bz2 module) ---
+if [ -f "$CACHE/libbz2.deb" ]; then
+    extract_deb_libs "$CACHE/libbz2.deb" "libbz2" "$CACHE"
+    f=$(find "$CACHE/_tmp_libbz2" -name "libbz2.so.1.0*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libbz2.so.1.0"; chmod 755 "$LIB_DIR/libbz2.so.1.0"; ok "  libbz2"; } || warn "  libbz2 not found"
+fi
+
+# --- liblzma (lzma module) ---
+if [ -f "$CACHE/liblzma.deb" ]; then
+    extract_deb_libs "$CACHE/liblzma.deb" "liblzma" "$CACHE"
+    f=$(find "$CACHE/_tmp_liblzma" -name "liblzma.so.5*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/liblzma.so.5"; chmod 755 "$LIB_DIR/liblzma.so.5"; ok "  liblzma"; } || warn "  liblzma not found"
+fi
+
+# --- libreadline (readline module) ---
+if [ -f "$CACHE/libreadline.deb" ]; then
+    extract_deb_libs "$CACHE/libreadline.deb" "libreadline" "$CACHE"
+    f=$(find "$CACHE/_tmp_libreadline" -name "libreadline.so.8*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libreadline.so.8"; chmod 755 "$LIB_DIR/libreadline.so.8"; ok "  libreadline"; } || warn "  libreadline not found"
+fi
+
+# --- libncursesw (curses module / readline dep) ---
+if [ -f "$CACHE/libncursesw.deb" ]; then
+    extract_deb_libs "$CACHE/libncursesw.deb" "libncursesw" "$CACHE"
+    f=$(find "$CACHE/_tmp_libncursesw" -name "libncursesw.so.6*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libncursesw.so.6"; chmod 755 "$LIB_DIR/libncursesw.so.6"; ok "  libncursesw"; } || warn "  libncursesw not found"
+fi
+
+# --- libgdbm (dbm module) ---
+if [ -f "$CACHE/libgdbm.deb" ]; then
+    extract_deb_libs "$CACHE/libgdbm.deb" "libgdbm" "$CACHE"
+    f=$(find "$CACHE/_tmp_libgdbm" -name "libgdbm.so.6*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libgdbm.so.6"; chmod 755 "$LIB_DIR/libgdbm.so.6"; ok "  libgdbm"; } || warn "  libgdbm not found"
+fi
+
+# --- libgdbm-compat (dbm.gnu / gdbm module) ---
+if [ -f "$CACHE/libgdbmc.deb" ]; then
+    extract_deb_libs "$CACHE/libgdbmc.deb" "libgdbmc" "$CACHE"
+    f=$(find "$CACHE/_tmp_libgdbmc" -name "libgdbm_compat.so.4*" -type f 2>/dev/null | head -1)
+    [ -n "$f" ] && [ -s "$f" ] && { cp -f "$f" "$LIB_DIR/libgdbm_compat.so.4"; chmod 755 "$LIB_DIR/libgdbm_compat.so.4"; ok "  libgdbm-compat"; } || warn "  libgdbm-compat not found"
+fi
+
 # --- pip ---
 if [ -f "$CACHE/pip.deb" ]; then
     extract_deb_libs "$CACHE/pip.deb" "pip" "$CACHE"
@@ -483,6 +618,7 @@ R=\$D/rootfs
 export HOME=\$D/home
 export MIMOCODE_HOME=\$D/home
 export PYTHONHOME=\$D/lib/pyhome
+export SSL_CERT_FILE=\$R/etc/ssl/certs/ca-certificates.crt
 export PATH=\$D/lib:\$PATH
 [ -x "\$D/lib/bash" ] && export SHELL="\$D/lib/bash"
 exec "\$D/lib/proot" \
@@ -535,6 +671,7 @@ WEOF
     cat > "/data/adb/modules/mimo/system/bin/python3" << WEOF
 #!/system/bin/sh
 export PYTHONHOME="${LIB_DIR}/pyhome"
+export SSL_CERT_FILE="${ROOTFS}/etc/ssl/certs/ca-certificates.crt"
 exec ${LIB_DIR}/ld-linux-aarch64.so.1 --library-path ${LIB_DIR} ${LIB_DIR}/python3.13 "\$@"
 WEOF
     chmod 755 "/data/adb/modules/mimo/system/bin/python3"
@@ -555,6 +692,7 @@ chmod 755 "$TOOL_DIR/bash"
 cat > "$TOOL_DIR/python3" << WEOF
 #!/system/bin/sh
 export PYTHONHOME="${LIB_DIR}/pyhome"
+export SSL_CERT_FILE="${ROOTFS}/etc/ssl/certs/ca-certificates.crt"
 exec ${LIB_DIR}/ld-linux-aarch64.so.1 --library-path ${LIB_DIR} ${LIB_DIR}/python3.13 "\$@"
 WEOF
 chmod 755 "$TOOL_DIR/python3"
@@ -583,6 +721,7 @@ WEOF
     cat > /data/adb/ksu/bin/python3 << WEOF
 #!/system/bin/sh
 export PYTHONHOME="${LIB_DIR}/pyhome"
+export SSL_CERT_FILE="${ROOTFS}/etc/ssl/certs/ca-certificates.crt"
 exec ${LIB_DIR}/ld-linux-aarch64.so.1 --library-path ${LIB_DIR} ${LIB_DIR}/python3.13 "\$@"
 WEOF
     chmod 755 /data/adb/ksu/bin/python3 2>/dev/null

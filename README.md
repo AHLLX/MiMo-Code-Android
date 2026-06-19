@@ -178,6 +178,21 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 - **[Debian](https://www.debian.org/)** arm64 packages supply the glibc runtime, bash, and python3
 - **[KernelSU](https://github.com/tiann/KernelSU)** provides the Android root solution and systemless module support
 
+## Changelog
+
+### v1.0.1
+
+- Complete Python runtime: add 9 Debian libraries (libssl / libcrypto / libzstd / libffi / libsqlite3 / libbz2 / liblzma / libreadline / libncursesw / libgdbm)
+- Fix urllib HTTPS certificate verification: add `SSL_CERT_FILE` to wrappers
+- Fix non-functional "Update/Repair" menu option
+- `check_integrity` covers all runtime library dependencies
+
+<details><summary>v1.0.0</summary>
+
+- Initial release
+
+</details>
+
 ## License
 
 MIT. See `LICENSE`.

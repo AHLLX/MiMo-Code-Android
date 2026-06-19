@@ -166,6 +166,21 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 - **[Debian](https://www.debian.org/)** arm64 软件包提供 glibc 运行时、bash、python3
 - **[KernelSU](https://github.com/tiann/KernelSU)** 提供 Android Root 方案与 systemless 模块支持
 
+## 更新日志
+
+### v1.0.1
+
+- 完善 Python 运行时：新增 9 个 Debian 库（libssl / libcrypto / libzstd / libffi / libsqlite3 / libbz2 / liblzma / libreadline / libncursesw / libgdbm）
+- 修复 urllib HTTPS 证书验证：wrapper 新增 `SSL_CERT_FILE`
+- 修复菜单"Update/Repair"选项无效
+- `check_integrity` 覆盖所有运行时库依赖
+
+<details><summary>v1.0.0</summary>
+
+- 初始发布
+
+</details>
+
 ## 许可证
 
 MIT。详见 `LICENSE`。
