@@ -168,6 +168,11 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 
 ## 更新日志
 
+### v1.0.2
+
+- 🚀 **智能更新**：选"更新/修复"仅下载 MiMo 二进制，跳过 glibc/bash/python3/tools/proot（版本固定无需重下），更新约 10 秒
+- 💾 更新不触碰用户数据（记忆/配置/pip 包），无需备份恢复
+
 ### v1.0.1
 
 - 完善 Python 运行时：新增 10 个 Debian 库

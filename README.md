@@ -180,6 +180,11 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 
 ## Changelog
 
+### v1.0.2
+
+- 🚀 **Smart update**: "Update/Repair" only downloads the MiMo binary — skips glibc/bash/python3/tools/proot (fixed versions), ~10s update
+- 💾 Update never touches user data (memory/config/pip packages)
+
 ### v1.0.1
 
 - Complete Python runtime: add 10 Debian libraries

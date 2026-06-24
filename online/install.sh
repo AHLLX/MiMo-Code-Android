@@ -39,6 +39,7 @@ case "$ROOT_METHOD" in
 esac
 
 TOOL_DIR="/data/local/tmp"
+UPDATE_MODE=0
 
 # ---------- Helpers ----------
 R='\033[0;31m'; G='\033[0;32m'; Y='\033[0;33m'; C='\033[0;36m'; O='\033[38;5;208m'; NC='\033[0m'
@@ -162,14 +163,14 @@ do_menu() {
         printf "  ${Y}[!]${NC} Missing components detected\n"
         echo ""
     fi
-    printf "  ${G}[1]${NC} Update/Repair to latest\n"
+    printf "  ${G}[1]${NC} Update/Repair to latest (preserves data)\n"
     printf "  ${R}[2]${NC} Uninstall\n"
     printf "  ${C}[3]${NC} Exit\n"
     echo ""
     printf "  Select: "
     read CHOICE
     case "$CHOICE" in
-        1) return 1 ;;
+        1) UPDATE_MODE=1; return 1 ;;
         2) do_uninstall ;;
         *) exit 0 ;;
     esac
@@ -213,8 +214,27 @@ ok "Network OK"
 
 # ---------- Get version ----------
 if [ -z "$MIMO_VER" ]; then
-    MIMO_VER=$(curl -s $CURL_PROXY --connect-timeout 10 --max-time 15 "https://api.github.com/repos/${MIMO_REPO}/releases/latest" 2>/dev/null | grep -o '"tag_name":"v[^"]*"' | head -1 | sed 's/"tag_name":"v//;s/"//')
-    [ -z "$MIMO_VER" ] && MIMO_VER="0.1.1"
+    # 使用更稳健的方式获取最新版本（|| true 防止 set -e 下 curl 失败导致脚本退出）
+    RESPONSE=$(curl -s $CURL_PROXY --connect-timeout 10 --max-time 15 "https://api.github.com/repos/${MIMO_REPO}/releases/latest" 2>/dev/null || true)
+    
+    # 尝试多种方式解析tag_name
+    if [ -n "$RESPONSE" ]; then
+        # 方法1: 使用grep提取tag_name字段
+        MIMO_VER=$(echo "$RESPONSE" | grep -o '"tag_name":"v[^"]*"' | head -1 | sed 's/"tag_name":"v//;s/"//')
+        
+        # 方法2: 如果方法1失败，尝试直接grep v版本号
+        if [ -z "$MIMO_VER" ]; then
+            MIMO_VER=$(echo "$RESPONSE" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 | sed 's/v//')
+        fi
+    fi
+    
+    # 调试输出：显示获取的版本
+    if [ -n "$MIMO_VER" ]; then
+        ok "Latest version detected: v${MIMO_VER}"
+    else
+        warn "Failed to fetch latest version, using default 0.1.1"
+        MIMO_VER="0.1.1"
+    fi
 fi
 
 # ---------- Config summary ----------
@@ -252,10 +272,18 @@ echo ""
 echo ""
 
 # ---------- Cleanup ----------
-info "Cleaning old files..."
-rm -rf "$INSTALL_DIR" "$WRAPPER" "$TOOL_DIR/mimo" "$TOOL_DIR/bash" "$TOOL_DIR/python3" "$CACHE" /data/adb/mimocode /data/local/.mimo-cache /data/local/.mimo-proot-cache 2>/dev/null
+if [ "$UPDATE_MODE" = "1" ]; then
+    info "Updating MiMo binary (preserving runtime & data)..."
+    rm -rf "$BIN_DIR/mimo.real" "$CACHE" 2>/dev/null
+else
+    info "Cleaning old files..."
+    rm -rf "$INSTALL_DIR" "$WRAPPER" "$TOOL_DIR/mimo" "$TOOL_DIR/bash" "$TOOL_DIR/python3" "$CACHE" /data/adb/mimocode /data/local/.mimo-cache /data/local/.mimo-proot-cache 2>/dev/null
+fi
 mkdir -p "$BIN_DIR" "$LIB_DIR" "$CACHE" "$HOME_DIR/.local/share/mimocode" "$HOME_DIR/.config/mimocode" "$HOME_DIR/.cache/mimocode"
 ok "Ready"
+
+# In update mode, skip steps 1-4 (glibc/bash/python3/tools/proot unchanged)
+if [ "$UPDATE_MODE" != "1" ]; then
 
 # ============================================================
 # 1. Download glibc
@@ -660,6 +688,8 @@ fi
 chown -R shell:shell "$ROOTFS" 2>/dev/null || true
 chmod -R 755 "$ROOTFS"
 
+fi  # end of update-mode skip (steps 1-4)
+
 # ============================================================
 # 5. Wrappers
 # ============================================================
@@ -838,6 +868,7 @@ ok "v${MIMO_VER}"
 
 chown -R shell:shell "$HOME_DIR" 2>/dev/null || true
 chmod -R 755 "$INSTALL_DIR"
+
 echo "$MIMO_VER" > "$STATE"
 
 ln -sf "$INSTALL_DIR" /data/adb/mimocode 2>/dev/null
@@ -855,7 +886,11 @@ SECS=$((ELAPSED % 60))
 echo ""
 printf "${G}"
 echo "=================================================="
-echo "           Installation Complete!"
+if [ "$UPDATE_MODE" = "1" ]; then
+    echo "           Update Complete! (data preserved)"
+else
+    echo "           Installation Complete!"
+fi
 echo "=================================================="
 printf "${NC}"
 echo ""
