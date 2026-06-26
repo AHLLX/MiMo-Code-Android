@@ -14,6 +14,7 @@ INSTALL_DIR="/data/local/tmp/mimocode"
 BIN_DIR="${INSTALL_DIR}/bin"
 LIB_DIR="${INSTALL_DIR}/lib"
 HOME_DIR="${INSTALL_DIR}/home"
+ROOTFS="${INSTALL_DIR}/rootfs"
 CACHE="/data/local/.mimo-cache"
 STATE="${INSTALL_DIR}/.state"
 DEBIAN_MIRROR="http://mirrors.ustc.edu.cn/debian/pool/main"
@@ -649,7 +650,6 @@ info "[4/6] proot + minimal rootfs..."
 
 PROOT_VER="5.3.0"
 PROOT_URL="https://github.com/proot-me/proot/releases/download/v${PROOT_VER}/proot-v${PROOT_VER}-aarch64-static"
-ROOTFS="$INSTALL_DIR/rootfs"
 
 # Download proot static binary
 dl "$PROOT_URL" "$LIB_DIR/proot" "proot v${PROOT_VER}" || {

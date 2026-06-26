@@ -168,6 +168,11 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 
 ## 更新日志
 
+### v1.0.3
+
+- 🐛 **修复版本检测**：API 响应解析改用更稳健的双重方案，不再回退到硬编码的 v0.1.1
+- 🐛 **修复更新模式崩溃**：`ROOTFS` 变量提升到顶层配置 — 更新模式不再报 "parameter not set"
+
 ### v1.0.2
 
 - 🚀 **智能更新**：选"更新/修复"仅下载 MiMo 二进制，跳过 glibc/bash/python3/tools/proot（版本固定无需重下），更新约 10 秒

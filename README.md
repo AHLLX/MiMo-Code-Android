@@ -180,6 +180,11 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 
 ## Changelog
 
+### v1.0.3
+
+- 🐛 **Fix version detection**: API response parsing made robust with fallback patterns; prevents fallback to hardcoded v0.1.1
+- 🐛 **Fix update mode crash**: `ROOTFS` variable moved to top-level config — update mode no longer fails with "parameter not set"
+
 ### v1.0.2
 
 - 🚀 **Smart update**: "Update/Repair" only downloads the MiMo binary — skips glibc/bash/python3/tools/proot (fixed versions), ~10s update
