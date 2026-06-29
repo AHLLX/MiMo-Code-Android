@@ -18,6 +18,7 @@ ROOTFS="${INSTALL_DIR}/rootfs"
 CACHE="/data/local/.mimo-cache"
 STATE="${INSTALL_DIR}/.state"
 DEBIAN_MIRROR="http://mirrors.ustc.edu.cn/debian/pool/main"
+DEBIAN_DEB="http://deb.debian.org/debian/pool/main"
 BB="/data/adb/ksu/bin/busybox"
 
 detect_root_method() {
@@ -88,11 +89,28 @@ dl() {
         return 1
     fi
     printf "\r  ${O}%-20s${NC}  ${G}OK${NC}\n" "$label"
+    # Validate .deb files — proxy may return HTML instead of binary
+    case "$out" in
+        *.deb)
+            local magic=$(dd if="$out" bs=8 count=1 2>/dev/null)
+            if [ "$magic" != "!<arch>" ]; then
+                printf "\r  ${O}%-20s${NC}  ${Y}!${NC} (non-deb content)\n" "$label"
+                rm -f "$out" 2>/dev/null
+                return 1
+            fi
+            ;;
+    esac
     return 0
 }
 
 extract_deb_libs() {
     local deb="$1" label="$2" out="$3"
+    # Validate deb archive (dd is more portable than head -c)
+    local magic=$(dd if="$deb" bs=8 count=1 2>/dev/null)
+    if [ "$magic" != "!<arch>" ]; then
+        warn "  $label: corrupt/invalid deb (magic=$magic)"
+        return 1
+    fi
     local tmpdir="$out/_tmp_$label"
     rm -rf "$tmpdir" 2>/dev/null
     mkdir -p "$tmpdir"
@@ -113,6 +131,7 @@ is_installed() {
     [ -f "$STATE" ] && [ -f "$BIN_DIR/mimo.real" ] && [ -f "$LIB_DIR/ld-linux-aarch64.so.1" ]
 }
 get_version()  { [ -f "$STATE" ] && cat "$STATE" 2>/dev/null || echo ""; }
+has_git() { [ -f "$LIB_DIR/git" ] && [ -f "$LIB_DIR/git-core/git" ]; }
 
 check_integrity() {
     local missing=""
@@ -136,19 +155,41 @@ check_integrity() {
     [ -f "$LIB_DIR/less" ] || missing="$missing less"
     [ -f "$LIB_DIR/file" ] || missing="$missing file"
     [ -f "$LIB_DIR/tree" ] || missing="$missing tree"
+    has_git || missing="$missing git"
     [ -f "$WRAPPER" ] || missing="$missing wrapper"
     [ -z "$missing" ]
 }
 
 do_uninstall() {
     echo ""
-    info "Uninstalling..."
-    rm -rf "$INSTALL_DIR" "$WRAPPER" "$CACHE" 2>/dev/null
-    rm -rf "$TOOL_DIR/mimo" "$TOOL_DIR/bash" "$TOOL_DIR/python3" 2>/dev/null
-    rm -rf /data/local/.mimo-cache /data/local/.mimo-proot-cache 2>/dev/null
-    rm -rf /data/adb/modules/mimo /data/adb/mimocode 2>/dev/null
-    rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3 2>/dev/null
-    ok "Uninstalled. Reboot to clear KSU mounts."
+    printf "  ${Y}Keep user data (memory/config/pip packages)?${NC}\n"
+    printf "  ${G}[1]${NC} Yes — keep data in ${HOME_DIR}\n"
+    printf "  ${R}[2]${NC} No — delete everything\n"
+    printf "  ${C}[3]${NC} Cancel\n"
+    printf "  Select: "
+    read KEEP
+    case "$KEEP" in
+        1) info "Uninstalling (keeping data)..."
+           rm -rf "$BIN_DIR" "$LIB_DIR" "$ROOTFS" "$WRAPPER" "$CACHE" 2>/dev/null
+           rm -f "$STATE" 2>/dev/null
+           rm -rf "$TOOL_DIR/mimo" "$TOOL_DIR/bash" "$TOOL_DIR/python3" "$TOOL_DIR/git" 2>/dev/null
+           rm -rf "$TOOL_DIR/nano" "$TOOL_DIR/less" "$TOOL_DIR/file" "$TOOL_DIR/tree" 2>/dev/null
+           rm -rf /data/local/.mimo-cache /data/local/.mimo-proot-cache 2>/dev/null
+           rm -rf /data/adb/modules/mimo /data/adb/mimocode 2>/dev/null
+           rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3 /data/adb/ksu/bin/git 2>/dev/null
+           ok "Uninstalled (data preserved in ${HOME_DIR})"
+           ;;
+        2) info "Uninstalling (deleting everything)..."
+           rm -rf "$INSTALL_DIR" "$WRAPPER" "$CACHE" 2>/dev/null
+           rm -rf "$TOOL_DIR/mimo" "$TOOL_DIR/bash" "$TOOL_DIR/python3" "$TOOL_DIR/git" 2>/dev/null
+           rm -rf "$TOOL_DIR/nano" "$TOOL_DIR/less" "$TOOL_DIR/file" "$TOOL_DIR/tree" 2>/dev/null
+           rm -rf /data/local/.mimo-cache /data/local/.mimo-proot-cache 2>/dev/null
+           rm -rf /data/adb/modules/mimo /data/adb/mimocode 2>/dev/null
+           rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3 /data/adb/ksu/bin/git 2>/dev/null
+           ok "Uninstalled. Reboot to clear KSU mounts."
+           ;;
+        *) echo "Cancelled"; exit 0 ;;
+    esac
     echo ""
     exit 0
 }
@@ -165,16 +206,142 @@ do_menu() {
         echo ""
     fi
     printf "  ${G}[1]${NC} Update/Repair to latest (preserves data)\n"
-    printf "  ${R}[2]${NC} Uninstall\n"
-    printf "  ${C}[3]${NC} Exit\n"
+    printf "  ${C}[2]${NC} Install/Repair git only\n"
+    printf "  ${R}[3]${NC} Uninstall\n"
+    printf "  ${C}[4]${NC} Exit\n"
     echo ""
     printf "  Select: "
     read CHOICE
     case "$CHOICE" in
-        1) UPDATE_MODE=1; return 1 ;;
-        2) do_uninstall ;;
+        1) UPDATE_MODE=1; has_git || do_fix_git; return 1 ;;
+        2) do_fix_git; exit 0 ;;
+        3) do_uninstall ;;
         *) exit 0 ;;
     esac
+}
+
+do_fix_git() {
+    echo ""
+    if has_git; then
+        ok "git already installed: $(cd "$LIB_DIR" && ./ld-linux-aarch64.so.1 --library-path . ./git --version 2>/dev/null)"
+        return 0
+    fi
+    info "Installing git..."
+    mkdir -p "$CACHE"
+
+    # Download git + all deps
+    GIT_DEBS="
+git|g/git/git_2.39.5-0+deb12u3_arm64.deb|git
+libcurl3|c/curl/libcurl3-gnutls_7.88.1-10+deb12u14_arm64.deb|libcurl3
+libssh2|l/libssh2/libssh2-1_1.10.0-3+b1_arm64.deb|libssh2
+libpsl|l/libpsl/libpsl5_0.21.2-1_arm64.deb|libpsl
+libpcre2|p/pcre2/libpcre2-8-0_10.42-1_arm64.deb|libpcre2
+libnghttp2|n/nghttp2/libnghttp2-14_1.52.0-1+deb12u3_arm64.deb|libnghttp2
+librtmp|r/rtmpdump/librtmp1_2.4+20151223.gitfa8646d.1-2+b2_arm64.deb|librtmp
+libbrotli|b/brotli/libbrotli1_1.0.9-2+b2_arm64.deb|libbrotli
+libgnutls|g/gnutls/libgnutls30_3.7.9-2+deb12u3_arm64.deb|libgnutls
+libtasn1|l/libtasn1-6/libtasn1-6_4.19.0-3+deb12u1_arm64.deb|libtasn1
+libp11kit|p/p11-kit/libp11-kit0_0.24.1-2_arm64.deb|libp11kit
+libidn2|l/libidn2/libidn2-0_2.3.7-2+deb12u1_arm64.deb|libidn2
+libunistring|l/libunistring/libunistring2_1.0-2_arm64.deb|libunistring
+libgmp|g/gmp/libgmp10_6.2.1+dfsg-2+deb12u1_arm64.deb|libgmp
+libnettle|n/nettle/libnettle8_3.8.1-2_arm64.deb|libnettle
+libhogweed|n/nettle/libhogweed6_3.8.1-2_arm64.deb|libhogweed
+libgssapi|k/krb5/libgssapi-krb5-2_1.20.1-2+deb12u4_arm64.deb|libgssapi
+libkrb5|k/krb5/libkrb5-3_1.20.1-2+deb12u4_arm64.deb|libkrb5
+libk5crypto|k/krb5/libk5crypto3_1.20.1-2+deb12u4_arm64.deb|libk5crypto
+libkrb5support|k/krb5/libkrb5support0_1.20.1-2+deb12u4_arm64.deb|libkrb5support
+libcomerr|e/e2fsprogs/libcom-err2_1.46.2-2_arm64.deb|libcomerr
+libsasl2|c/cyrus-sasl2/libsasl2-2_2.1.28+dfsg-10_arm64.deb|libsasl2
+libldap|o/openldap/libldap-2.5-0_2.5.13+dfsg-5_arm64.deb|libldap
+libkeyutils|k/keyutils/libkeyutils1_1.6.3-2_arm64.deb|libkeyutils"
+    echo "$GIT_DEBS" | while IFS='|' read -r name path file; do
+        [ -z "$name" ] && continue
+        if [ -f "$CACHE/${file}.deb" ] && [ -s "$CACHE/${file}.deb" ]; then
+            local magic=$(dd if="$CACHE/${file}.deb" bs=8 count=1 2>/dev/null)
+            if [ "$magic" = "!<arch>" ]; then
+                ok "  $name (cached)"
+                continue
+            fi
+            warn "  $name cached deb corrupt, re-downloading..."
+        fi
+        dl "${DEBIAN_MIRROR}/${path}" "$CACHE/${file}.deb" "$name" || \
+            dl "${DEBIAN_DEB}/${path}" "$CACHE/${file}.deb" "$name (alt)" || \
+            warn "  $name download failed"
+    done
+
+    # Extract git
+    extract_deb_libs "$CACHE/git.deb" "git" "$CACHE"
+    GIT_BIN=$(find "$CACHE/_tmp_git" -path "*/bin/git" -type f 2>/dev/null | head -1)
+    [ -n "$GIT_BIN" ] && [ -s "$GIT_BIN" ] && {
+        cp -f "$GIT_BIN" "$LIB_DIR/git"; chmod 755 "$LIB_DIR/git"
+        mkdir -p "$LIB_DIR/git-core"
+        cp -f "$CACHE/_tmp_git/usr/lib/git-core/"* "$LIB_DIR/git-core/" 2>/dev/null
+        chmod 755 "$LIB_DIR/git-core/"* 2>/dev/null
+        ok "  git binary"
+    } || { warn "  git binary not found"; return 1; }
+
+    # Extract git deps
+    echo "$GIT_DEBS" | while IFS='|' read -r name path file; do
+        [ "$file" = "git" ] && continue
+        [ -f "$CACHE/${file}.deb" ] || continue
+        extract_deb_libs "$CACHE/${file}.deb" "$file" "$CACHE"
+        find "$CACHE/_tmp_${file}" -name "*.so*" -type f 2>/dev/null | while read -r f; do
+            cp -f "$f" "$LIB_DIR/" 2>/dev/null
+            chmod 755 "$LIB_DIR/$(basename "$f")"
+        done
+    done
+
+    # Fix symlinks
+    cd "$LIB_DIR" 2>/dev/null
+    for f in *.so.*; do
+        [ -L "$f" ] && continue; [ ! -f "$f" ] && continue
+        echo "$f" | grep -qE '\.so\.[0-9]+\.[0-9]+(\.[0-9]+)?$' || continue
+        MAJOR=$(echo "$f" | sed 's/\.so\.\([0-9]*\).*/\.so.\1/')
+        [ ! -e "$MAJOR" ] && ln -sf "$f" "$MAJOR" 2>/dev/null
+    done
+    [ ! -e "$LIB_DIR/libresolv.so.2" ] && ln -sf libc.so.6 "$LIB_DIR/libresolv.so.2" 2>/dev/null
+    ok "  git deps"
+
+    # Proot wrapper
+    cat > "$BIN_DIR/git" << WEOF
+#!/system/bin/sh
+D=${INSTALL_DIR}
+R=\$D/rootfs
+export HOME=\$D/home
+export GIT_EXEC_PATH=/lib/git-core
+export GIT_TEMPLATE_DIR=/lib/git-templates
+export SSL_CERT_FILE=\$R/etc/ssl/certs/ca-certificates.crt
+cd "\$(pwd 2>/dev/null || echo \$D)" 2>/dev/null || cd \$D
+exec "\$D/lib/proot" \\
+  -b "\$D/lib:/lib" \\
+  -b "\$R/etc/resolv.conf:/etc/resolv.conf" \\
+  -b "\$R/etc/hosts:/etc/hosts" \\
+  -b "\$R/etc/nsswitch.conf:/etc/nsswitch.conf" \\
+  -b "\$R/etc/ssl:/etc/ssl" \\
+  -w "\$(pwd)" \\
+  "\$D/lib/ld-linux-aarch64.so.1" --library-path "\$D/lib" "\$D/lib/git" "\$@"
+WEOF
+    chmod 755 "$BIN_DIR/git"
+
+    # KSU bin + module shortcuts
+    if [ -d /data/adb/ksu/bin ]; then
+        cat > /data/adb/ksu/bin/git << WEOF
+#!/system/bin/sh
+exec ${INSTALL_DIR}/bin/git "\$@"
+WEOF
+        chmod 755 /data/adb/ksu/bin/git 2>/dev/null
+    fi
+    if [ "$ROOT_METHOD" != "unknown" ] && [ -d /data/adb/modules/mimo/system/bin ]; then
+        cat > /data/adb/modules/mimo/system/bin/git << WEOF
+#!/system/bin/sh
+exec ${INSTALL_DIR}/bin/git "\$@"
+WEOF
+        chmod 755 /data/adb/modules/mimo/system/bin/git 2>/dev/null
+    fi
+
+    rm -rf "$CACHE"
+    ok "git installed: $(cd "$LIB_DIR" && ./ld-linux-aarch64.so.1 --library-path . ./git --version 2>/dev/null)"
 }
 
 # ============================================================
@@ -257,6 +424,7 @@ echo "    - MiMo Code v${MIMO_VER:-latest}"
 echo "    - glibc (libc6/libstdc++/libgcc)"
 echo "    - bash (glibc)"
 echo "    - python3 + pip (glibc)"
+echo "    - git (glibc + proot)"
 echo ""
 printf "  ${C}Auto-installing in %2d sec (press n to cancel)...${NC}\r" 10
 WAIT=10
@@ -301,12 +469,16 @@ for pkg in \
     "libgcc|g/gcc-14/libgcc-s1_${GCC_VER}_arm64.deb|libgcc"; do
     IFS='|' read -r name path file <<< "$pkg"
     if [ -f "$CACHE/${file}.deb" ] && [ -s "$CACHE/${file}.deb" ]; then
-        ok "  $name (cached)"
-    else
-        dl "${DEBIAN_MIRROR}/${path}" "$CACHE/${file}.deb" "$name" || {
-            warn "  $name download failed"
-        }
+        local magic=$(dd if="$CACHE/${file}.deb" bs=8 count=1 2>/dev/null)
+        if [ "$magic" = "!<arch>" ]; then
+            ok "  $name (cached)"
+            continue
+        fi
+        warn "  $name cached deb corrupt, re-downloading..."
     fi
+    dl "${DEBIAN_MIRROR}/${path}" "$CACHE/${file}.deb" "$name" || \
+        dl "${DEBIAN_DEB}/${path}" "$CACHE/${file}.deb" "$name (alt)" || \
+        warn "  $name download failed"
 done
 
 # ============================================================
@@ -318,98 +490,138 @@ info "[2/5] Downloading bash + python3..."
 # bash (glibc)
 BASH_DEB="bash_5.3-3_arm64.deb"
 [ -f "$CACHE/bash.deb" ] && [ -s "$CACHE/bash.deb" ] && ok "  bash (cached)" || \
-    dl "${DEBIAN_MIRROR}/b/bash/${BASH_DEB}" "$CACHE/bash.deb" "bash"
+    dl "${DEBIAN_MIRROR}/b/bash/${BASH_DEB}" "$CACHE/bash.deb" "bash" || \
+    dl "${DEBIAN_DEB}/b/bash/${BASH_DEB}" "$CACHE/bash.deb" "bash (alt)" || \
+    warn "  bash download failed"
 
 # libtinfo (bash dep)
 TINFO_DEB="libtinfo6_6.6+20260608-1_arm64.deb"
 [ -f "$CACHE/libtinfo.deb" ] && [ -s "$CACHE/libtinfo.deb" ] && ok "  libtinfo (cached)" || \
-    dl "${DEBIAN_MIRROR}/n/ncurses/${TINFO_DEB}" "$CACHE/libtinfo.deb" "libtinfo"
+    dl "${DEBIAN_MIRROR}/n/ncurses/${TINFO_DEB}" "$CACHE/libtinfo.deb" "libtinfo" || \
+    dl "${DEBIAN_DEB}/n/ncurses/${TINFO_DEB}" "$CACHE/libtinfo.deb" "libtinfo (alt)" || \
+    warn "  libtinfo download failed"
 
 # python3.13-minimal
 PY3_DEB="python3.13-minimal_3.13.14-1_arm64.deb"
 [ -f "$CACHE/python3.deb" ] && [ -s "$CACHE/python3.deb" ] && ok "  python3 (cached)" || \
-    dl "${DEBIAN_MIRROR}/p/python3.13/${PY3_DEB}" "$CACHE/python3.deb" "python3"
+    dl "${DEBIAN_MIRROR}/p/python3.13/${PY3_DEB}" "$CACHE/python3.deb" "python3" || \
+    dl "${DEBIAN_DEB}/p/python3.13/${PY3_DEB}" "$CACHE/python3.deb" "python3 (alt)" || \
+    warn "  python3 download failed"
 
 # libpython3.13-minimal (core stdlib: encodings etc)
 LIBPY_MIN_DEB="libpython3.13-minimal_3.13.14-1_arm64.deb"
 [ -f "$CACHE/libpython-min.deb" ] && [ -s "$CACHE/libpython-min.deb" ] && ok "  libpython-min (cached)" || \
-    dl "${DEBIAN_MIRROR}/p/python3.13/${LIBPY_MIN_DEB}" "$CACHE/libpython-min.deb" "libpython-min"
+    dl "${DEBIAN_MIRROR}/p/python3.13/${LIBPY_MIN_DEB}" "$CACHE/libpython-min.deb" "libpython-min" || \
+    dl "${DEBIAN_DEB}/p/python3.13/${LIBPY_MIN_DEB}" "$CACHE/libpython-min.deb" "libpython-min (alt)" || \
+    warn "  libpython-min download failed"
 
 # libpython3.13-stdlib (full stdlib: shutil etc)
 LIBPY_STD_DEB="libpython3.13-stdlib_3.13.14-1_arm64.deb"
 [ -f "$CACHE/libpython-std.deb" ] && [ -s "$CACHE/libpython-std.deb" ] && ok "  libpython-std (cached)" || \
-    dl "${DEBIAN_MIRROR}/p/python3.13/${LIBPY_STD_DEB}" "$CACHE/libpython-std.deb" "libpython-std"
+    dl "${DEBIAN_MIRROR}/p/python3.13/${LIBPY_STD_DEB}" "$CACHE/libpython-std.deb" "libpython-std" || \
+    dl "${DEBIAN_DEB}/p/python3.13/${LIBPY_STD_DEB}" "$CACHE/libpython-std.deb" "libpython-std (alt)" || \
+    warn "  libpython-std download failed"
 
 # zlib (python dep)
 ZLIB_DEB="zlib1g_1.3.dfsg+really1.3.1-1+b1_arm64.deb"
 [ -f "$CACHE/zlib.deb" ] && [ -s "$CACHE/zlib.deb" ] && ok "  zlib (cached)" || \
-    dl "${DEBIAN_MIRROR}/z/zlib/${ZLIB_DEB}" "$CACHE/zlib.deb" "zlib"
+    dl "${DEBIAN_MIRROR}/z/zlib/${ZLIB_DEB}" "$CACHE/zlib.deb" "zlib" || \
+    dl "${DEBIAN_DEB}/z/zlib/${ZLIB_DEB}" "$CACHE/zlib.deb" "zlib (alt)" || \
+    warn "  zlib download failed"
 
 # libexpat (python dep)
 EXPAT_DEB="libexpat1_2.7.1-2_arm64.deb"
 [ -f "$CACHE/expat.deb" ] && [ -s "$CACHE/expat.deb" ] && ok "  libexpat (cached)" || \
-    dl "${DEBIAN_MIRROR}/e/expat/${EXPAT_DEB}" "$CACHE/expat.deb" "libexpat"
+    dl "${DEBIAN_MIRROR}/e/expat/${EXPAT_DEB}" "$CACHE/expat.deb" "libexpat" || \
+    dl "${DEBIAN_DEB}/e/expat/${EXPAT_DEB}" "$CACHE/expat.deb" "libexpat (alt)" || \
+    warn "  libexpat download failed"
 
 # libssl (OpenSSL runtime for Python pip HTTPS)
 OPENSSL_VER="3.6.3-1"
 OPENSSL_DEB="libssl3t64_${OPENSSL_VER}_arm64.deb"
 [ -f "$CACHE/libssl.deb" ] && [ -s "$CACHE/libssl.deb" ] && ok "  libssl (cached)" || \
-    dl "${DEBIAN_MIRROR}/o/openssl/${OPENSSL_DEB}" "$CACHE/libssl.deb" "libssl"
+    dl "${DEBIAN_MIRROR}/o/openssl/${OPENSSL_DEB}" "$CACHE/libssl.deb" "libssl" || \
+    dl "${DEBIAN_DEB}/o/openssl/${OPENSSL_DEB}" "$CACHE/libssl.deb" "libssl (alt)" || \
+    warn "  libssl download failed"
 
 # libzstd (OpenSSL dependency)
 ZSTD_DEB="libzstd1_1.5.7+dfsg-1_arm64.deb"
 [ -f "$CACHE/libzstd.deb" ] && [ -s "$CACHE/libzstd.deb" ] && ok "  libzstd (cached)" || \
-    dl "${DEBIAN_MIRROR}/libz/libzstd/${ZSTD_DEB}" "$CACHE/libzstd.deb" "libzstd"
+    dl "${DEBIAN_MIRROR}/libz/libzstd/${ZSTD_DEB}" "$CACHE/libzstd.deb" "libzstd" || \
+    dl "${DEBIAN_DEB}/libz/libzstd/${ZSTD_DEB}" "$CACHE/libzstd.deb" "libzstd (alt)" || \
+    warn "  libzstd download failed"
 
 # libffi (ctypes dependency)
 FFI_DEB="libffi8_3.5.2-4_arm64.deb"
 [ -f "$CACHE/libffi.deb" ] && [ -s "$CACHE/libffi.deb" ] && ok "  libffi (cached)" || \
-    dl "${DEBIAN_MIRROR}/libf/libffi/${FFI_DEB}" "$CACHE/libffi.deb" "libffi"
+    dl "${DEBIAN_MIRROR}/libf/libffi/${FFI_DEB}" "$CACHE/libffi.deb" "libffi" || \
+    dl "${DEBIAN_DEB}/libf/libffi/${FFI_DEB}" "$CACHE/libffi.deb" "libffi (alt)" || \
+    warn "  libffi download failed"
 
 # libsqlite3 (sqlite3 dependency)
 SQLITE_DEB="libsqlite3-0_3.53.2-1_arm64.deb"
 [ -f "$CACHE/libsqlite3.deb" ] && [ -s "$CACHE/libsqlite3.deb" ] && ok "  libsqlite3 (cached)" || \
-    dl "${DEBIAN_MIRROR}/s/sqlite3/${SQLITE_DEB}" "$CACHE/libsqlite3.deb" "libsqlite3"
+    dl "${DEBIAN_MIRROR}/s/sqlite3/${SQLITE_DEB}" "$CACHE/libsqlite3.deb" "libsqlite3" || \
+    dl "${DEBIAN_DEB}/s/sqlite3/${SQLITE_DEB}" "$CACHE/libsqlite3.deb" "libsqlite3 (alt)" || \
+    warn "  libsqlite3 download failed"
 
 # libbz2 (bz2 module)
 BZ2_DEB="libbz2-1.0_1.0.8-6+b2_arm64.deb"
 [ -f "$CACHE/libbz2.deb" ] && [ -s "$CACHE/libbz2.deb" ] && ok "  libbz2 (cached)" || \
-    dl "${DEBIAN_MIRROR}/b/bzip2/${BZ2_DEB}" "$CACHE/libbz2.deb" "libbz2"
+    dl "${DEBIAN_MIRROR}/b/bzip2/${BZ2_DEB}" "$CACHE/libbz2.deb" "libbz2" || \
+    dl "${DEBIAN_DEB}/b/bzip2/${BZ2_DEB}" "$CACHE/libbz2.deb" "libbz2 (alt)" || \
+    warn "  libbz2 download failed"
 
 # liblzma (lzma module)
 LZMA_DEB="liblzma5_5.8.3-1_arm64.deb"
 [ -f "$CACHE/liblzma.deb" ] && [ -s "$CACHE/liblzma.deb" ] && ok "  liblzma (cached)" || \
-    dl "${DEBIAN_MIRROR}/x/xz-utils/${LZMA_DEB}" "$CACHE/liblzma.deb" "liblzma"
+    dl "${DEBIAN_MIRROR}/x/xz-utils/${LZMA_DEB}" "$CACHE/liblzma.deb" "liblzma" || \
+    dl "${DEBIAN_DEB}/x/xz-utils/${LZMA_DEB}" "$CACHE/liblzma.deb" "liblzma (alt)" || \
+    warn "  liblzma download failed"
 
 # libreadline + libncursesw (readline / curses)
 RL_DEB="libreadline8t64_8.3-4_arm64.deb"
 [ -f "$CACHE/libreadline.deb" ] && [ -s "$CACHE/libreadline.deb" ] && ok "  libreadline (cached)" || \
-    dl "${DEBIAN_MIRROR}/r/readline/${RL_DEB}" "$CACHE/libreadline.deb" "libreadline"
+    dl "${DEBIAN_MIRROR}/r/readline/${RL_DEB}" "$CACHE/libreadline.deb" "libreadline" || \
+    dl "${DEBIAN_DEB}/r/readline/${RL_DEB}" "$CACHE/libreadline.deb" "libreadline (alt)" || \
+    warn "  libreadline download failed"
 
 NCURSESW_DEB="libncursesw6_6.6+20251231-1+b1_arm64.deb"
 [ -f "$CACHE/libncursesw.deb" ] && [ -s "$CACHE/libncursesw.deb" ] && ok "  libncursesw (cached)" || \
-    dl "${DEBIAN_MIRROR}/n/ncurses/${NCURSESW_DEB}" "$CACHE/libncursesw.deb" "libncursesw"
+    dl "${DEBIAN_MIRROR}/n/ncurses/${NCURSESW_DEB}" "$CACHE/libncursesw.deb" "libncursesw" || \
+    dl "${DEBIAN_DEB}/n/ncurses/${NCURSESW_DEB}" "$CACHE/libncursesw.deb" "libncursesw (alt)" || \
+    warn "  libncursesw download failed"
 
 # libgdbm (dbm module)
 GDBM_DEB="libgdbm6t64_1.26-1+b2_arm64.deb"
 [ -f "$CACHE/libgdbm.deb" ] && [ -s "$CACHE/libgdbm.deb" ] && ok "  libgdbm (cached)" || \
-    dl "${DEBIAN_MIRROR}/g/gdbm/${GDBM_DEB}" "$CACHE/libgdbm.deb" "libgdbm"
+    dl "${DEBIAN_MIRROR}/g/gdbm/${GDBM_DEB}" "$CACHE/libgdbm.deb" "libgdbm" || \
+    dl "${DEBIAN_DEB}/g/gdbm/${GDBM_DEB}" "$CACHE/libgdbm.deb" "libgdbm (alt)" || \
+    warn "  libgdbm download failed"
 
 # libgdbm-compat (dbm.gnu / gdbm module)
 GDBMC_DEB="libgdbm-compat4t64_1.26-1+b2_arm64.deb"
 [ -f "$CACHE/libgdbmc.deb" ] && [ -s "$CACHE/libgdbmc.deb" ] && ok "  libgdbm-compat (cached)" || \
-    dl "${DEBIAN_MIRROR}/g/gdbm/${GDBMC_DEB}" "$CACHE/libgdbmc.deb" "libgdbm-compat"
+    dl "${DEBIAN_MIRROR}/g/gdbm/${GDBMC_DEB}" "$CACHE/libgdbmc.deb" "libgdbm-compat" || \
+    dl "${DEBIAN_DEB}/g/gdbm/${GDBMC_DEB}" "$CACHE/libgdbmc.deb" "libgdbm-compat (alt)" || \
+    warn "  libgdbm-compat download failed"
 
 # libmagic (file command dependency)
 [ -f "$CACHE/libmagic.deb" ] && [ -s "$CACHE/libmagic.deb" ] && ok "  libmagic (cached)" || \
-    dl "${DEBIAN_MIRROR}/f/file/libmagic1t64_5.47-4_arm64.deb" "$CACHE/libmagic.deb" "libmagic"
+    dl "${DEBIAN_MIRROR}/f/file/libmagic1t64_5.47-4_arm64.deb" "$CACHE/libmagic.deb" "libmagic" || \
+    dl "${DEBIAN_DEB}/f/file/libmagic1t64_5.47-4_arm64.deb" "$CACHE/libmagic.deb" "libmagic (alt)" || \
+    warn "  libmagic download failed"
 [ -f "$CACHE/libmagic-mgc.deb" ] && [ -s "$CACHE/libmagic-mgc.deb" ] && ok "  libmagic-mgc (cached)" || \
-    dl "${DEBIAN_MIRROR}/f/file/libmagic-mgc_5.47-4_arm64.deb" "$CACHE/libmagic-mgc.deb" "libmagic-mgc"
+    dl "${DEBIAN_MIRROR}/f/file/libmagic-mgc_5.47-4_arm64.deb" "$CACHE/libmagic-mgc.deb" "libmagic-mgc" || \
+    dl "${DEBIAN_DEB}/f/file/libmagic-mgc_5.47-4_arm64.deb" "$CACHE/libmagic-mgc.deb" "libmagic-mgc (alt)" || \
+    warn "  libmagic-mgc download failed"
 
 # pip wheel
 PIP_DEB="python3-pip-whl_26.1.2+dfsg-1_all.deb"
 [ -f "$CACHE/pip.deb" ] && [ -s "$CACHE/pip.deb" ] && ok "  pip (cached)" || \
-    dl "${DEBIAN_MIRROR}/p/python-pip/${PIP_DEB}" "$CACHE/pip.deb" "pip"
+    dl "${DEBIAN_MIRROR}/p/python-pip/${PIP_DEB}" "$CACHE/pip.deb" "pip" || \
+    dl "${DEBIAN_DEB}/p/python-pip/${PIP_DEB}" "$CACHE/pip.deb" "pip (alt)" || \
+    warn "  pip download failed"
 
 # ============================================================
 # 2.5 Tools (nano, less, file, tree)
@@ -419,19 +631,73 @@ info "[2.5/5] Downloading tools..."
 
 # nano (text editor)
 [ -f "$CACHE/nano.deb" ] && [ -s "$CACHE/nano.deb" ] && ok "  nano (cached)" || \
-    dl "${DEBIAN_MIRROR}/n/nano/nano_9.0-1_arm64.deb" "$CACHE/nano.deb" "nano"
+    dl "${DEBIAN_MIRROR}/n/nano/nano_9.0-1_arm64.deb" "$CACHE/nano.deb" "nano" || \
+    dl "${DEBIAN_DEB}/n/nano/nano_9.0-1_arm64.deb" "$CACHE/nano.deb" "nano (alt)" || \
+    warn "  nano download failed"
 
 # less (pager)
 [ -f "$CACHE/less.deb" ] && [ -s "$CACHE/less.deb" ] && ok "  less (cached)" || \
-    dl "${DEBIAN_MIRROR}/l/less/less_668-1+b1_arm64.deb" "$CACHE/less.deb" "less"
+    dl "${DEBIAN_MIRROR}/l/less/less_668-1+b1_arm64.deb" "$CACHE/less.deb" "less" || \
+    dl "${DEBIAN_DEB}/l/less/less_668-1+b1_arm64.deb" "$CACHE/less.deb" "less (alt)" || \
+    warn "  less download failed"
 
 # file (file type detection)
 [ -f "$CACHE/file.deb" ] && [ -s "$CACHE/file.deb" ] && ok "  file (cached)" || \
-    dl "${DEBIAN_MIRROR}/f/file/file_5.47-4_arm64.deb" "$CACHE/file.deb" "file"
+    dl "${DEBIAN_MIRROR}/f/file/file_5.47-4_arm64.deb" "$CACHE/file.deb" "file" || \
+    dl "${DEBIAN_DEB}/f/file/file_5.47-4_arm64.deb" "$CACHE/file.deb" "file (alt)" || \
+    warn "  file download failed"
 
 # tree (directory listing)
 [ -f "$CACHE/tree.deb" ] && [ -s "$CACHE/tree.deb" ] && ok "  tree (cached)" || \
-    dl "${DEBIAN_MIRROR}/t/tree/tree_2.3.2-1_arm64.deb" "$CACHE/tree.deb" "tree"
+    dl "${DEBIAN_MIRROR}/t/tree/tree_2.3.2-1_arm64.deb" "$CACHE/tree.deb" "tree" || \
+    dl "${DEBIAN_DEB}/t/tree/tree_2.3.2-1_arm64.deb" "$CACHE/tree.deb" "tree (alt)" || \
+    warn "  tree download failed"
+
+# ============================================================
+# 2.6 Git + dependencies
+# ============================================================
+echo ""
+info "[2.6/6] Downloading git..."
+
+for dep in \
+    "git|g/git/git_2.39.5-0+deb12u3_arm64.deb|git" \
+    "libcurl3|c/curl/libcurl3-gnutls_7.88.1-10+deb12u14_arm64.deb|libcurl3" \
+    "libssh2|l/libssh2/libssh2-1_1.10.0-3+b1_arm64.deb|libssh2" \
+    "libpsl|l/libpsl/libpsl5_0.21.2-1_arm64.deb|libpsl" \
+    "libpcre2|p/pcre2/libpcre2-8-0_10.42-1_arm64.deb|libpcre2" \
+    "libnghttp2|n/nghttp2/libnghttp2-14_1.52.0-1+deb12u3_arm64.deb|libnghttp2" \
+    "librtmp|r/rtmpdump/librtmp1_2.4+20151223.gitfa8646d.1-2+b2_arm64.deb|librtmp" \
+    "libbrotli|b/brotli/libbrotli1_1.0.9-2+b2_arm64.deb|libbrotli" \
+    "libgnutls|g/gnutls/libgnutls30_3.7.9-2+deb12u3_arm64.deb|libgnutls" \
+    "libtasn1|l/libtasn1-6/libtasn1-6_4.19.0-3+deb12u1_arm64.deb|libtasn1" \
+    "libp11kit|p/p11-kit/libp11-kit0_0.24.1-2_arm64.deb|libp11kit" \
+    "libidn2|l/libidn2/libidn2-0_2.3.7-2+deb12u1_arm64.deb|libidn2" \
+    "libunistring|l/libunistring/libunistring2_1.0-2_arm64.deb|libunistring" \
+    "libgmp|g/gmp/libgmp10_6.2.1+dfsg-2+deb12u1_arm64.deb|libgmp" \
+    "libnettle|n/nettle/libnettle8_3.8.1-2_arm64.deb|libnettle" \
+    "libhogweed|n/nettle/libhogweed6_3.8.1-2_arm64.deb|libhogweed" \
+    "libgssapi|k/krb5/libgssapi-krb5-2_1.20.1-2+deb12u4_arm64.deb|libgssapi" \
+    "libkrb5|k/krb5/libkrb5-3_1.20.1-2+deb12u4_arm64.deb|libkrb5" \
+    "libk5crypto|k/krb5/libk5crypto3_1.20.1-2+deb12u4_arm64.deb|libk5crypto" \
+    "libkrb5support|k/krb5/libkrb5support0_1.20.1-2+deb12u4_arm64.deb|libkrb5support" \
+    "libcomerr|e/e2fsprogs/libcom-err2_1.46.2-2_arm64.deb|libcomerr" \
+    "libsasl2|c/cyrus-sasl2/libsasl2-2_2.1.28+dfsg-10_arm64.deb|libsasl2" \
+    "libldap|o/openldap/libldap-2.5-0_2.5.13+dfsg-5_arm64.deb|libldap" \
+    "libkeyutils|k/keyutils/libkeyutils1_1.6.3-2_arm64.deb|libkeyutils"; do
+    IFS='|' read -r name path file <<< "$dep"
+    if [ -f "$CACHE/${file}.deb" ] && [ -s "$CACHE/${file}.deb" ]; then
+        # Validate cached deb
+        local magic=$(dd if="$CACHE/${file}.deb" bs=8 count=1 2>/dev/null)
+        if [ "$magic" = "!<arch>" ]; then
+            ok "  $name (cached)"
+            continue
+        fi
+        warn "  $name cached deb corrupt, re-downloading..."
+    fi
+    dl "${DEBIAN_DEB}/${path}" "$CACHE/${file}.deb" "$name" || \
+        dl "${DEBIAN_MIRROR}/${path}" "$CACHE/${file}.deb" "$name (alt)" || \
+        warn "  $name download failed"
+done
 
 # ============================================================
 # 3. Extract & install
@@ -441,13 +707,30 @@ info "[3/5] Extracting..."
 
 # --- glibc ---
 for file in "libc6" "libstdcpp" "libgcc"; do
-    [ -f "$CACHE/${file}.deb" ] && extract_deb_libs "$CACHE/${file}.deb" "$file" "$CACHE" && ok "  $file" || warn "  $file failed"
+    if [ -f "$CACHE/${file}.deb" ]; then
+        if extract_deb_libs "$CACHE/${file}.deb" "$file" "$CACHE"; then
+            ok "  $file"
+        else
+            # Retry from official Debian mirror
+            case "$file" in
+                libc6)   retry_path="g/glibc/libc6_${GLIBC_VER}_arm64.deb" ;;
+                libstdcpp) retry_path="g/gcc-14/libstdc++6_${GCC_VER}_arm64.deb" ;;
+                libgcc)  retry_path="g/gcc-14/libgcc-s1_${GCC_VER}_arm64.deb" ;;
+            esac
+            warn "  $file: retrying from Debian official..."
+            dl "${DEBIAN_DEB}/${retry_path}" "$CACHE/${file}.deb" "$file (retry)" && \
+                extract_deb_libs "$CACHE/${file}.deb" "$file" "$CACHE" && ok "  $file" || warn "  $file failed"
+        fi
+    else
+        warn "  $file deb not found"
+    fi
 done
 
 SRC=""
-for p in "$CACHE"/_tmp_libc6/usr/lib/aarch64-linux-gnu "$CACHE"/_tmp_libc6/usr/lib; do
-    [ -d "$p" ] && [ -f "$p/ld-linux-aarch64.so.1" ] && SRC="$p" && break
-done
+LD_FILE=$(find "$CACHE/_tmp_libc6" -name "ld-linux-aarch64.so.1" 2>/dev/null | head -1)
+if [ -n "$LD_FILE" ]; then
+    SRC=$(dirname "$LD_FILE")
+fi
 if [ -n "$SRC" ]; then
     for lib in ld-linux-aarch64.so.1 libc.so.6 libstdc++.so.6.0.33 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1; do
         [ -f "$SRC/$lib" ] && [ -s "$SRC/$lib" ] && { cp -f "$SRC/$lib" "$LIB_DIR/"; chmod 755 "$LIB_DIR/$lib"; }
@@ -458,7 +741,7 @@ if [ -n "$SRC" ]; then
     [ -n "$GCC_SRC" ] && { cp -f "$GCC_SRC" "$LIB_DIR/libgcc_s.so.1"; chmod 755 "$LIB_DIR/libgcc_s.so.1"; }
     ok "  glibc runtime"
 else
-    warn "  glibc not found"
+    err "glibc not found (download or extraction failed) - aborting."
 fi
 
 # --- bash ---
@@ -642,6 +925,41 @@ if [ -f "$CACHE/libmagic-mgc.deb" ]; then
     [ -n "$MAGIC" ] && { cp -f "$MAGIC" "$LIB_DIR/magic.mgc"; ok "  magic.mgc"; } || warn "  magic.mgc not found"
 fi
 
+# --- git ---
+if [ -f "$CACHE/git.deb" ]; then
+    extract_deb_libs "$CACHE/git.deb" "git" "$CACHE"
+    GIT_BIN=$(find "$CACHE/_tmp_git" -path "*/bin/git" -type f 2>/dev/null | head -1)
+    [ -n "$GIT_BIN" ] && [ -s "$GIT_BIN" ] && {
+        cp -f "$GIT_BIN" "$LIB_DIR/git"; chmod 755 "$LIB_DIR/git"
+        mkdir -p "$LIB_DIR/git-core"
+        cp -f "$CACHE/_tmp_git/usr/lib/git-core/"* "$LIB_DIR/git-core/" 2>/dev/null
+        chmod 755 "$LIB_DIR/git-core/"* 2>/dev/null
+        ok "  git (glibc)"
+    } || warn "  git not found"
+fi
+
+# --- git deps (bulk extract) ---
+for dep in libcurl3 libssh2 libpsl libpcre2 libnghttp2 librtmp libbrotli \
+           libgnutls libtasn1 libp11kit libidn2 libunistring libgmp \
+           libnettle libhogweed libgssapi libkrb5 libk5crypto libkrb5support \
+           libcomerr libsasl2 libldap libkeyutils; do
+    [ -f "$CACHE/${dep}.deb" ] || continue
+    extract_deb_libs "$CACHE/${dep}.deb" "$dep" "$CACHE"
+    find "$CACHE/_tmp_${dep}" -name "*.so*" -type f 2>/dev/null | while read -r f; do
+        cp -f "$f" "$LIB_DIR/" 2>/dev/null
+        chmod 755 "$LIB_DIR/$(basename "$f")"
+    done
+done
+# fix symlinks
+cd "$LIB_DIR" 2>/dev/null
+for f in *.so.*; do
+    [ -L "$f" ] && continue; [ ! -f "$f" ] && continue
+    echo "$f" | grep -qE '\.so\.[0-9]+\.[0-9]+(\.[0-9]+)?$' || continue
+    MAJOR=$(echo "$f" | sed 's/\.so\.\([0-9]*\).*/\.so.\1/')
+    [ ! -e "$MAJOR" ] && ln -sf "$f" "$MAJOR" 2>/dev/null
+done
+[ ! -e "$LIB_DIR/libresolv.so.2" ] && ln -sf libc.so.6 "$LIB_DIR/libresolv.so.2" 2>/dev/null
+
 # ============================================================
 # 4. proot + rootfs (DNS / SSL / NSS for glibc)
 # ============================================================
@@ -739,7 +1057,7 @@ EOF
     cat > "/data/adb/modules/mimo/uninstall.sh" << UEOF
 #!/system/bin/sh
 rm -rf /data/local/tmp/mimocode
-rm -rf /data/local/tmp/mimo /data/local/tmp/bash /data/local/tmp/python3
+rm -rf /data/local/tmp/mimo /data/local/tmp/bash /data/local/tmp/python3 /data/local/tmp/git
 rm -rf /data/local/.mimo-cache /data/local/.mimo-proot-cache
 UEOF
     chmod 755 "/data/adb/modules/mimo/uninstall.sh"
@@ -761,8 +1079,16 @@ export SSL_CERT_FILE="${ROOTFS}/etc/ssl/certs/ca-certificates.crt"
 exec ${LIB_DIR}/ld-linux-aarch64.so.1 --library-path ${LIB_DIR} ${LIB_DIR}/python3.13 "\$@"
 WEOF
     chmod 755 "/data/adb/modules/mimo/system/bin/python3"
+    # git wrapper in module
+    if has_git; then
+        cat > "/data/adb/modules/mimo/system/bin/git" << WEOF
+#!/system/bin/sh
+exec ${INSTALL_DIR}/bin/git "\$@"
+WEOF
+        chmod 755 "/data/adb/modules/mimo/system/bin/git"
+    fi
     restorecon -R /data/adb/modules/mimo 2>/dev/null || true
-    ok "  systemless module (mimo/bash/python3 after reboot)"
+    ok "  systemless module (mimo/bash/python3/git after reboot)"
     else
         warn "  Cannot create KSU module"
     fi
@@ -800,6 +1126,29 @@ exec ${LIB_DIR}/ld-linux-aarch64.so.1 --library-path ${LIB_DIR} ${LIB_DIR}/file 
 WEOF
 chmod 755 "$TOOL_DIR/file"
 
+# git proot wrapper (needs proot for deep deps)
+if has_git; then
+    cat > "$BIN_DIR/git" << WEOF
+#!/system/bin/sh
+D=${INSTALL_DIR}
+R=\$D/rootfs
+export HOME=\$D/home
+export GIT_EXEC_PATH=/lib/git-core
+export GIT_TEMPLATE_DIR=/lib/git-templates
+export SSL_CERT_FILE=\$R/etc/ssl/certs/ca-certificates.crt
+cd "\$(pwd 2>/dev/null || echo \$D)" 2>/dev/null || cd \$D
+exec "\$D/lib/proot" \\
+  -b "\$D/lib:/lib" \\
+  -b "\$R/etc/resolv.conf:/etc/resolv.conf" \\
+  -b "\$R/etc/hosts:/etc/hosts" \\
+  -b "\$R/etc/nsswitch.conf:/etc/nsswitch.conf" \\
+  -b "\$R/etc/ssl:/etc/ssl" \\
+  -w "\$(pwd)" \\
+  "\$D/lib/ld-linux-aarch64.so.1" --library-path "\$D/lib" "\$D/lib/git" "\$@"
+WEOF
+    chmod 755 "$BIN_DIR/git"
+fi
+
 # Fallback mimo shortcut
 if [ "$WRAPPER" != "/data/local/tmp/mimo" ]; then
     cat > /data/local/tmp/mimo << WEOF
@@ -835,6 +1184,13 @@ exec ${TOOL_DIR}/${tool} "\$@"
 WEOF
         chmod 755 "/data/adb/ksu/bin/${tool}" 2>/dev/null
     done
+    if has_git; then
+        cat > /data/adb/ksu/bin/git << WEOF
+#!/system/bin/sh
+exec ${INSTALL_DIR}/bin/git "\$@"
+WEOF
+        chmod 755 /data/adb/ksu/bin/git 2>/dev/null
+    fi
 fi
 
 ok "wrappers ready"
@@ -913,6 +1269,10 @@ if [ -f "$LIB_DIR/proot" ]; then
 else
     printf "  ${Y}%-12s  %-35s  %s  proot missing${NC}\n" "proot" "(missing)" "0"
 fi
+if has_git; then
+    GIT_VER=$("$LIB_DIR/ld-linux-aarch64.so.1" --library-path "$LIB_DIR" "$LIB_DIR/git" --version 2>/dev/null | awk '{print $3}')
+    printf "  %-12s  %-35s  %s\n" "git" "$LIB_DIR/git" "${GIT_VER:-?}"
+fi
 TOTAL_SIZE=$(du -sh "$INSTALL_DIR" 2>/dev/null | awk '{print $1}')
 echo "  ----------------------------------------"
 printf "  %-12s  %-35s  %s\n" "Total" "$INSTALL_DIR" "${TOTAL_SIZE:-?}"
@@ -920,7 +1280,7 @@ echo ""
 echo "  ${G}Usage:${NC}"
 echo ""
 if [ "$ROOT_METHOD" != "unknown" ]; then
-    echo "  ${C}After reboot:${NC} mimo / bash / python3 available globally"
+    echo "  ${C}After reboot:${NC} mimo / bash / python3 / git available globally"
     echo ""
     echo "  ${C}Without reboot:${NC}"
 fi
@@ -930,6 +1290,7 @@ echo "  ${C}Tools:${NC}"
 echo "    /data/local/tmp/bash --version"
 echo "    /data/local/tmp/python3 --version"
 echo "    /data/local/tmp/python3 -m pip --version"
+echo "    /data/local/tmp/git --version"
 echo ""
 echo "  Re-run this script to update/uninstall"
 echo ""

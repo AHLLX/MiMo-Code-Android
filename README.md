@@ -79,7 +79,8 @@ The CA bundle is merged from Android's 149 individual `/system/etc/security/cace
 | ----------- | --------------------- | -------------------------------- |
 | glibc 2.42  | Debian arm64 (USTC)   | runtime for Linux binaries       |
 | bash 5.3    | Debian pool           | shell for MiMo subprocesses      |
-| python3.13  | Debian pool           | dev tool                |
+| python3.13  | Debian pool           | dev tool                         |
+| git 2.39    | Debian pool           | version control                  |
 | proot 5.3.0 | GitHub Releases       | syscall translation layer        |
 | MiMo Code   | GitHub Releases       | the actual application           |
 
@@ -156,7 +157,7 @@ Preferred method (handles permissions automatically):
 
 ```bash
 adb shell su -c "sh /data/local/tmp/install.sh"
-# Select [2] Uninstall
+# Select [3] Uninstall
 ```
 
 Reboot after uninstall to clear KSU module mounts.
@@ -180,6 +181,13 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 
 ## Changelog
 
+### v1.0.4
+
+- 🚀 **Git support**: install git with all dependencies (HTTPS/SSH via proot)
+- 🔧 **Re-run menu**: option [2] Install/Repair git only
+- 🗑️ **Uninstall confirmation**: user chooses whether to keep data or delete everything
+- 🛡️ **Dual-mirror defense**: added `dd magic` validation for all downloaded `.deb` files with robust dual-mirror (USTC + Debian) fallback to prevent environmental corruption from network anomalies
+
 ### v1.0.3
 
 - 🐛 **Fix version detection**: API response parsing made robust with fallback patterns; prevents fallback to hardcoded v0.1.1
@@ -190,17 +198,10 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 - 🚀 **Smart update**: "Update/Repair" only downloads the MiMo binary — skips glibc/bash/python3/tools/proot (fixed versions), ~10s update
 - 💾 Update never touches user data (memory/config/pip packages)
 
-### v1.0.1
+<details><summary>v1.0.1 and earlier</summary>
 
-- Complete Python runtime: add 10 Debian libraries
-- Add utility tools: nano, less, file, tree
-- Fix urllib HTTPS certificate verification: add `SSL_CERT_FILE` to wrappers
-- Fix non-functional "Update/Repair" menu option
-- `check_integrity` covers all runtime libs and tools
-
-<details><summary>v1.0.0</summary>
-
-- Initial release
+- v1.0.1: Add Python runtime, tools (nano/less/file/tree), fix HTTPS certs, fix Update/Repair menu
+- v1.0.0: Initial release
 
 </details>
 

@@ -72,6 +72,7 @@ wrapper 通过 5 个 bind mount 实现文件覆盖：
 | glibc 2.42  | Debian arm64 (USTC) | Linux 二进制运行时 |
 | bash 5.3    | Debian pool         | MiMo 子进程 shell  |
 | python3.13  | Debian pool         | 开发工具           |
+| git 2.39    | Debian pool         | 版本控制           |
 | proot 5.3.0 | GitHub Releases     | syscall 翻译层     |
 | MiMo Code   | GitHub Releases     | 应用程序本体       |
 
@@ -144,7 +145,7 @@ python3 -m pip --version    # pip 26.1.2
 
 ```bash
 adb shell su -c "sh /data/local/tmp/install.sh"
-# 选择 [2] Uninstall
+# 选择 [3] Uninstall
 ```
 
 卸载后需**重启设备**，KSU 模块挂载才会完全清除。
@@ -168,6 +169,13 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 
 ## 更新日志
 
+### v1.0.4
+
+- 🚀 **Git 支持**：安装 git 及全部依赖（HTTPS/SSH 通过 proot）
+- 🔧 **再次运行菜单**：选项 [2] 仅安装/修复 git
+- 🗑️ **卸载确认**：用户可选择保留数据或全部删除
+- 🛡️ **双镜像防御**：所有 `deb` 下载增加 `dd magic` 校验并引入双节点 (USTC + Debian 官方源) 兜底，提取机制深度重构，防止网络异常导致环境损坏
+
 ### v1.0.3
 
 - 🐛 **修复版本检测**：API 响应解析改用更稳健的双重方案，不再回退到硬编码的 v0.1.1
@@ -178,17 +186,10 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
 - 🚀 **智能更新**：选"更新/修复"仅下载 MiMo 二进制，跳过 glibc/bash/python3/tools/proot（版本固定无需重下），更新约 10 秒
 - 💾 更新不触碰用户数据（记忆/配置/pip 包），无需备份恢复
 
-### v1.0.1
+<details><summary>v1.0.1 及更早</summary>
 
-- 完善 Python 运行时：新增 10 个 Debian 库
-- 新增实用工具：nano、less、file、tree
-- 修复 urllib HTTPS 证书验证：wrapper 新增 `SSL_CERT_FILE`
-- 修复菜单"Update/Repair"选项无效
-- `check_integrity` 覆盖所有运行时库和工具
-
-<details><summary>v1.0.0</summary>
-
-- 初始发布
+- v1.0.1：完善 Python 运行时、新增工具 (nano/less/file/tree)、修复 HTTPS 证书、修复 Update/Repair 菜单
+- v1.0.0：初始发布
 
 </details>
 

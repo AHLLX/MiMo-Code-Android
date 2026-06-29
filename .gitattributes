@@ -1,0 +1,3 @@
+# Force LF line endings for shell scripts (Android sh cannot parse CRLF)
+online/install.sh text eol=lf
+online/*.sh text eol=lf
