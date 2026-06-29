@@ -39,12 +39,21 @@ The `/data/adb/ksu/bin/` path was added because some devices (e.g., Redmi K80 Pr
 
 ## Quick Start
 
+**Recommended: One-liner via mobile terminal (e.g. Termux)**
+
 ```bash
-# Online install (needs network)
+su -c "curl -sL https://github.com/AHLLX/MiMo-Code-Android/releases/latest/download/install.sh | sh"
+```
+
+**Alternative: PC via ADB**
+
+```bash
 adb push online/install.sh /data/local/tmp/
 adb shell su -c "sh /data/local/tmp/install.sh"
+```
 
-# Available globally immediately (no reboot needed):
+Available globally immediately (no reboot needed):
+```bash
 su
 mimo
 ```

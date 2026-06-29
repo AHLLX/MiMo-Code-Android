@@ -39,14 +39,26 @@ python3 -m pip --version
 
 ## 快速开始
 
-**以 Termius 为例，授予 Root 权限后作为终端操作**
+**推荐：直接在手机终端（如 Termux / 自动指令）中执行一键安装**
 
 ```bash
-# 在线安装（需网络）
+su -c "curl -sL https://github.com/AHLLX/MiMo-Code-Android/releases/latest/download/install.sh | sh"
+```
+
+*(注：由于国内网络原因，如果上述命令不通，可以使用 GitHub 镜像加速)*：
+```bash
+su -c "curl -sL https://ghproxy.cn/https://github.com/AHLLX/MiMo-Code-Android/releases/latest/download/install.sh | sh"
+```
+
+**备用：使用电脑 ADB 推送安装**
+
+```bash
 adb push online/install.sh /data/local/tmp/
 adb shell su -c "sh /data/local/tmp/install.sh"
+```
 
-# 安装完成，立即全局可用（无需重启）：
+安装完成，立即全局可用（无需重启）：
+```bash
 su
 mimo
 ```
