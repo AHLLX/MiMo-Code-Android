@@ -22,7 +22,7 @@
 
 ## KSU 全局命令
 
-安装脚本提供**双重保障**，确保 `mimo`、`bash`、`python3` 全局可用：
+安装脚本提供**双重保障**，确保 `mimo`、`bash`、`python3`、`git` 全局可用：
 
 **1. `/data/adb/ksu/bin/` 即时可用。** KSU 自带的 bin 目录，在 su 的 PATH 中，SELinux context 正确，写完立刻生效，**无需重启**：
 
@@ -31,6 +31,7 @@ su
 mimo --version
 bash --version
 python3 -m pip --version
+git --version
 ```
 
 **2. `/data/adb/modules/mimo/` 重启后挂载。** systemless 模块方式，重启时 KSU 将模块内的二进制 bind-mount 到 `/system/bin/`，作为备选方案。不修改系统分区，不触发 SafetyNet，卸载时删除模块目录即可完全还原。
@@ -82,9 +83,9 @@ wrapper 通过 5 个 bind mount 实现文件覆盖：
 | 组件        | 来源                | 用途               |
 | ----------- | ------------------- | ------------------ |
 | glibc 2.42  | Debian arm64 (USTC) | Linux 二进制运行时 |
-| bash 5.3    | Debian pool         | MiMo 子进程 shell  |
-| python3.13  | Debian pool         | 开发工具           |
-| git 2.39    | Debian pool         | 版本控制           |
+| bash 5.3.9  | Debian pool         | MiMo 子进程 shell  |
+| python3.13.14 | Debian pool       | 开发工具           |
+| git 2.39.5  | Debian pool         | 版本控制           |
 | proot 5.3.0 | GitHub Releases     | syscall 翻译层     |
 | MiMo Code   | GitHub Releases     | 应用程序本体       |
 
@@ -113,7 +114,9 @@ wrapper 通过 5 个 bind mount 实现文件覆盖：
 
 暂无其他可测试设备，欢迎提交验证结果。
 
-## Python 环境
+## 开发工具
+
+### Python
 
 Python 3.13.14 + pip 26.1.2 随 MiMo Code 一起安装，安装后即刻全局可用：
 
@@ -122,6 +125,18 @@ su
 python3 --version           # Python 3.13.14
 python3 -m pip --version    # pip 26.1.2
 ```
+
+### Git
+
+Git 2.39.5（glibc 版本）通过 proot 运行，支持 HTTPS 和 SSH。安装后全局可用：
+
+```bash
+su
+git --version               # git version 2.39.5
+git clone https://github.com/...
+```
+
+> **注意：** Git 在 Android 上需要 proot 路径翻译才能正常使用 HTTPS/SSH，wrapper 已透明处理。
 
 | 类别   | 工具              | 状态 |
 | ------ | ----------------- | ---- |
@@ -150,6 +165,7 @@ python3 -m pip --version    # pip 26.1.2
 | `wrappers/mimo` | 运行时启动器。通过 proot 挂载 5 个虚拟路径，经由 glibc 的 `ld-linux` 启动 MiMo Code。设置 `HOME`、`MIMOCODE_HOME`、`PYTHONHOME`、`SHELL`。 |
 | `wrappers/bash` | 通过动态链接器启动 glibc 版本的 bash。 |
 | `wrappers/python3` | 启动 glibc 版本的 python3，设置 `PYTHONHOME` 指向 Debian 标准库。 |
+| `lib/git` | Git 2.39.5（glibc 版本）通过 Debian 软件包安装。经由 proot 运行以支持完整的 HTTPS/SSH。 |
 
 ## 卸载
 
@@ -168,7 +184,7 @@ adb shell su -c "sh /data/local/tmp/install.sh"
 adb shell
 su
 rm -rf /data/local/tmp/mimocode /data/local/tmp/mimo /data/local/tmp/bash /data/local/tmp/python3 /data/adb/modules/mimo /data/adb/mimocode /data/local/.mimo-cache /data/local/.mimo-proot-cache
-rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
+rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3 /data/adb/ksu/bin/git
 ```
 
 ## 致谢

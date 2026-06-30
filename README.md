@@ -22,7 +22,7 @@ No source modifications to MiMo Code.
 
 ## KernelSU Global Commands
 
-The installer provides **dual-guarantee** global access to `mimo`, `bash`, and `python3`:
+The installer provides **dual-guarantee** global access to `mimo`, `bash`, `python3`, and `git`:
 
 **1. `/data/adb/ksu/bin/` — instant.** KSU's own bin directory, already on PATH under `su`, with correct SELinux context. Works immediately, **no reboot required**:
 
@@ -31,6 +31,7 @@ su
 mimo --version
 bash --version
 python3 -m pip --version
+git --version
 ```
 
 **2. `/data/adb/modules/mimo/` — post-reboot.** Standard systemless module approach: KSU bind-mounts module binaries to `/system/bin/` on reboot. Acts as a fallback. No system partition modification, no SafetyNet impact, fully reversible.
@@ -87,9 +88,9 @@ The CA bundle is merged from Android's 149 individual `/system/etc/security/cace
 | component   | source                | purpose                          |
 | ----------- | --------------------- | -------------------------------- |
 | glibc 2.42  | Debian arm64 (USTC)   | runtime for Linux binaries       |
-| bash 5.3    | Debian pool           | shell for MiMo subprocesses      |
-| python3.13  | Debian pool           | dev tool                         |
-| git 2.39    | Debian pool           | version control                  |
+| bash 5.3.9  | Debian pool           | shell for MiMo subprocesses      |
+| python3.13.14 | Debian pool         | dev tool                         |
+| git 2.39.5  | Debian pool           | version control                  |
 | proot 5.3.0 | GitHub Releases       | syscall translation layer        |
 | MiMo Code   | GitHub Releases       | the actual application           |
 
@@ -137,7 +138,9 @@ The remaining 9 are supporting/internal tools called indirectly or activated on 
 
 No additional test devices available. Contributions confirming other devices are welcome.
 
-## Python Environment
+## Development Tools
+
+### Python
 
 Python 3.13.14 with pip 26.1.2 is installed alongside MiMo Code, available globally immediately after install:
 
@@ -146,6 +149,18 @@ su
 python3 --version           # Python 3.13.14
 python3 -m pip --version    # pip 26.1.2
 ```
+
+### Git
+
+Git 2.39.5 (glibc) runs through proot, supporting HTTPS and SSH. Available globally after install:
+
+```bash
+su
+git --version               # git version 2.39.5
+git clone https://github.com/...
+```
+
+> **Note:** Git requires proot path translation for HTTPS/SSH to work on Android. The wrapper handles this transparently.
 
 ## Files
 
@@ -157,6 +172,7 @@ python3 -m pip --version    # pip 26.1.2
 | `wrappers/mimo` | Runtime launcher. Invokes proot with five bind mounts, then starts MiMo Code through glibc's `ld-linux`. Sets `HOME`, `MIMOCODE_HOME`, `PYTHONHOME`, and `SHELL`. |
 | `wrappers/bash` | Launches glibc bash through the dynamic linker. |
 | `wrappers/python3` | Launches glibc python3 with `PYTHONHOME` pointing to the Debian stdlib. |
+| `lib/git` | Git 2.39.5 (glibc) installed via Debian packages. Runs through proot for full HTTPS/SSH support. |
 | `test.sh` | Smoke test: verifies `mimo --version`, `bash --version`, `python3 -m pip --version`. |
 
 
@@ -177,7 +193,7 @@ Or remove manually (enter su first for full permissions):
 adb shell
 su
 rm -rf /data/local/tmp/mimocode /data/local/tmp/mimo /data/local/tmp/bash /data/local/tmp/python3 /data/adb/modules/mimo /data/adb/mimocode /data/local/.mimo-cache /data/local/.mimo-proot-cache
-rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3
+rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3 /data/adb/ksu/bin/git
 ```
 
 ## Acknowledgments
