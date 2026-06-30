@@ -88,7 +88,6 @@ dl() {
         printf "\r  ${O}%-20s${NC}  ${R}X${NC}\n" "$label"
         return 1
     fi
-    printf "\r  ${O}%-20s${NC}  ${G}OK${NC}\n" "$label"
     # Validate .deb files — proxy may return HTML instead of binary
     case "$out" in
         *.deb)
@@ -100,6 +99,7 @@ dl() {
             fi
             ;;
     esac
+    printf "\r  ${O}%-20s${NC}  ${G}OK${NC}\n" "$label"
     return 0
 }
 
@@ -454,250 +454,147 @@ ok "Ready"
 # In update mode, skip steps 1-4 (glibc/bash/python3/tools/proot unchanged)
 if [ "$UPDATE_MODE" != "1" ]; then
 
+
+
+
+
+
+
+
 # ============================================================
-# 1. Download glibc
+# Parallel Download Dependencies
 # ============================================================
 echo ""
-info "[1/5] Downloading glibc..."
+info "Downloading dependencies (parallel + auto-resolve)..."
 
-GLIBC_VER="2.42-16"
-GCC_VER="14.2.0-19"
+download_deps_parallel() {
+    local pids=""
+    local count=0
 
-for pkg in \
-    "libc6|g/glibc/libc6_${GLIBC_VER}_arm64.deb|libc6" \
-    "libstdc++|g/gcc-14/libstdc++6_${GCC_VER}_arm64.deb|libstdcpp" \
-    "libgcc|g/gcc-14/libgcc-s1_${GCC_VER}_arm64.deb|libgcc"; do
-    IFS='|' read -r name path file <<< "$pkg"
-    if [ -f "$CACHE/${file}.deb" ] && [ -s "$CACHE/${file}.deb" ]; then
-        local magic=$(dd if="$CACHE/${file}.deb" bs=8 count=1 2>/dev/null)
-        if [ "$magic" = "!<arch>" ]; then
+    while IFS=',' read -r name path_prefix regex file_out; do
+        [ -z "$name" ] && continue
+        
+        if [ -s "$CACHE/${file_out}.deb" ] && [ "$(dd if="$CACHE/${file_out}.deb" bs=8 count=1 2>/dev/null)" = "!<arch>" ]; then
             ok "  $name (cached)"
             continue
         fi
-        warn "  $name cached deb corrupt, re-downloading..."
-    fi
-    dl "${DEBIAN_MIRROR}/${path}" "$CACHE/${file}.deb" "$name" || \
-        dl "${DEBIAN_DEB}/${path}" "$CACHE/${file}.deb" "$name (alt)" || \
-        warn "  $name download failed"
-done
-
-# ============================================================
-# 2. Download bash + python3 + deps
-# ============================================================
-echo ""
-info "[2/5] Downloading bash + python3..."
-
-# bash (glibc)
-BASH_DEB="bash_5.3-3_arm64.deb"
-[ -f "$CACHE/bash.deb" ] && [ -s "$CACHE/bash.deb" ] && ok "  bash (cached)" || \
-    dl "${DEBIAN_MIRROR}/b/bash/${BASH_DEB}" "$CACHE/bash.deb" "bash" || \
-    dl "${DEBIAN_DEB}/b/bash/${BASH_DEB}" "$CACHE/bash.deb" "bash (alt)" || \
-    warn "  bash download failed"
-
-# libtinfo (bash dep)
-TINFO_DEB="libtinfo6_6.6+20260608-1_arm64.deb"
-[ -f "$CACHE/libtinfo.deb" ] && [ -s "$CACHE/libtinfo.deb" ] && ok "  libtinfo (cached)" || \
-    dl "${DEBIAN_MIRROR}/n/ncurses/${TINFO_DEB}" "$CACHE/libtinfo.deb" "libtinfo" || \
-    dl "${DEBIAN_DEB}/n/ncurses/${TINFO_DEB}" "$CACHE/libtinfo.deb" "libtinfo (alt)" || \
-    warn "  libtinfo download failed"
-
-# python3.13-minimal
-PY3_DEB="python3.13-minimal_3.13.14-1_arm64.deb"
-[ -f "$CACHE/python3.deb" ] && [ -s "$CACHE/python3.deb" ] && ok "  python3 (cached)" || \
-    dl "${DEBIAN_MIRROR}/p/python3.13/${PY3_DEB}" "$CACHE/python3.deb" "python3" || \
-    dl "${DEBIAN_DEB}/p/python3.13/${PY3_DEB}" "$CACHE/python3.deb" "python3 (alt)" || \
-    warn "  python3 download failed"
-
-# libpython3.13-minimal (core stdlib: encodings etc)
-LIBPY_MIN_DEB="libpython3.13-minimal_3.13.14-1_arm64.deb"
-[ -f "$CACHE/libpython-min.deb" ] && [ -s "$CACHE/libpython-min.deb" ] && ok "  libpython-min (cached)" || \
-    dl "${DEBIAN_MIRROR}/p/python3.13/${LIBPY_MIN_DEB}" "$CACHE/libpython-min.deb" "libpython-min" || \
-    dl "${DEBIAN_DEB}/p/python3.13/${LIBPY_MIN_DEB}" "$CACHE/libpython-min.deb" "libpython-min (alt)" || \
-    warn "  libpython-min download failed"
-
-# libpython3.13-stdlib (full stdlib: shutil etc)
-LIBPY_STD_DEB="libpython3.13-stdlib_3.13.14-1_arm64.deb"
-[ -f "$CACHE/libpython-std.deb" ] && [ -s "$CACHE/libpython-std.deb" ] && ok "  libpython-std (cached)" || \
-    dl "${DEBIAN_MIRROR}/p/python3.13/${LIBPY_STD_DEB}" "$CACHE/libpython-std.deb" "libpython-std" || \
-    dl "${DEBIAN_DEB}/p/python3.13/${LIBPY_STD_DEB}" "$CACHE/libpython-std.deb" "libpython-std (alt)" || \
-    warn "  libpython-std download failed"
-
-# zlib (python dep)
-ZLIB_DEB="zlib1g_1.3.dfsg+really1.3.1-1+b1_arm64.deb"
-[ -f "$CACHE/zlib.deb" ] && [ -s "$CACHE/zlib.deb" ] && ok "  zlib (cached)" || \
-    dl "${DEBIAN_MIRROR}/z/zlib/${ZLIB_DEB}" "$CACHE/zlib.deb" "zlib" || \
-    dl "${DEBIAN_DEB}/z/zlib/${ZLIB_DEB}" "$CACHE/zlib.deb" "zlib (alt)" || \
-    warn "  zlib download failed"
-
-# libexpat (python dep)
-EXPAT_DEB="libexpat1_2.7.1-2_arm64.deb"
-[ -f "$CACHE/expat.deb" ] && [ -s "$CACHE/expat.deb" ] && ok "  libexpat (cached)" || \
-    dl "${DEBIAN_MIRROR}/e/expat/${EXPAT_DEB}" "$CACHE/expat.deb" "libexpat" || \
-    dl "${DEBIAN_DEB}/e/expat/${EXPAT_DEB}" "$CACHE/expat.deb" "libexpat (alt)" || \
-    warn "  libexpat download failed"
-
-# libssl (OpenSSL runtime for Python pip HTTPS)
-OPENSSL_VER="3.6.3-1"
-OPENSSL_DEB="libssl3t64_${OPENSSL_VER}_arm64.deb"
-[ -f "$CACHE/libssl.deb" ] && [ -s "$CACHE/libssl.deb" ] && ok "  libssl (cached)" || \
-    dl "${DEBIAN_MIRROR}/o/openssl/${OPENSSL_DEB}" "$CACHE/libssl.deb" "libssl" || \
-    dl "${DEBIAN_DEB}/o/openssl/${OPENSSL_DEB}" "$CACHE/libssl.deb" "libssl (alt)" || \
-    warn "  libssl download failed"
-
-# libzstd (OpenSSL dependency)
-ZSTD_DEB="libzstd1_1.5.7+dfsg-1_arm64.deb"
-[ -f "$CACHE/libzstd.deb" ] && [ -s "$CACHE/libzstd.deb" ] && ok "  libzstd (cached)" || \
-    dl "${DEBIAN_MIRROR}/libz/libzstd/${ZSTD_DEB}" "$CACHE/libzstd.deb" "libzstd" || \
-    dl "${DEBIAN_DEB}/libz/libzstd/${ZSTD_DEB}" "$CACHE/libzstd.deb" "libzstd (alt)" || \
-    warn "  libzstd download failed"
-
-# libffi (ctypes dependency)
-FFI_DEB="libffi8_3.5.2-4_arm64.deb"
-[ -f "$CACHE/libffi.deb" ] && [ -s "$CACHE/libffi.deb" ] && ok "  libffi (cached)" || \
-    dl "${DEBIAN_MIRROR}/libf/libffi/${FFI_DEB}" "$CACHE/libffi.deb" "libffi" || \
-    dl "${DEBIAN_DEB}/libf/libffi/${FFI_DEB}" "$CACHE/libffi.deb" "libffi (alt)" || \
-    warn "  libffi download failed"
-
-# libsqlite3 (sqlite3 dependency)
-SQLITE_DEB="libsqlite3-0_3.53.2-1_arm64.deb"
-[ -f "$CACHE/libsqlite3.deb" ] && [ -s "$CACHE/libsqlite3.deb" ] && ok "  libsqlite3 (cached)" || \
-    dl "${DEBIAN_MIRROR}/s/sqlite3/${SQLITE_DEB}" "$CACHE/libsqlite3.deb" "libsqlite3" || \
-    dl "${DEBIAN_DEB}/s/sqlite3/${SQLITE_DEB}" "$CACHE/libsqlite3.deb" "libsqlite3 (alt)" || \
-    warn "  libsqlite3 download failed"
-
-# libbz2 (bz2 module)
-BZ2_DEB="libbz2-1.0_1.0.8-6+b2_arm64.deb"
-[ -f "$CACHE/libbz2.deb" ] && [ -s "$CACHE/libbz2.deb" ] && ok "  libbz2 (cached)" || \
-    dl "${DEBIAN_MIRROR}/b/bzip2/${BZ2_DEB}" "$CACHE/libbz2.deb" "libbz2" || \
-    dl "${DEBIAN_DEB}/b/bzip2/${BZ2_DEB}" "$CACHE/libbz2.deb" "libbz2 (alt)" || \
-    warn "  libbz2 download failed"
-
-# liblzma (lzma module)
-LZMA_DEB="liblzma5_5.8.3-1_arm64.deb"
-[ -f "$CACHE/liblzma.deb" ] && [ -s "$CACHE/liblzma.deb" ] && ok "  liblzma (cached)" || \
-    dl "${DEBIAN_MIRROR}/x/xz-utils/${LZMA_DEB}" "$CACHE/liblzma.deb" "liblzma" || \
-    dl "${DEBIAN_DEB}/x/xz-utils/${LZMA_DEB}" "$CACHE/liblzma.deb" "liblzma (alt)" || \
-    warn "  liblzma download failed"
-
-# libreadline + libncursesw (readline / curses)
-RL_DEB="libreadline8t64_8.3-4_arm64.deb"
-[ -f "$CACHE/libreadline.deb" ] && [ -s "$CACHE/libreadline.deb" ] && ok "  libreadline (cached)" || \
-    dl "${DEBIAN_MIRROR}/r/readline/${RL_DEB}" "$CACHE/libreadline.deb" "libreadline" || \
-    dl "${DEBIAN_DEB}/r/readline/${RL_DEB}" "$CACHE/libreadline.deb" "libreadline (alt)" || \
-    warn "  libreadline download failed"
-
-NCURSESW_DEB="libncursesw6_6.6+20251231-1+b1_arm64.deb"
-[ -f "$CACHE/libncursesw.deb" ] && [ -s "$CACHE/libncursesw.deb" ] && ok "  libncursesw (cached)" || \
-    dl "${DEBIAN_MIRROR}/n/ncurses/${NCURSESW_DEB}" "$CACHE/libncursesw.deb" "libncursesw" || \
-    dl "${DEBIAN_DEB}/n/ncurses/${NCURSESW_DEB}" "$CACHE/libncursesw.deb" "libncursesw (alt)" || \
-    warn "  libncursesw download failed"
-
-# libgdbm (dbm module)
-GDBM_DEB="libgdbm6t64_1.26-1+b2_arm64.deb"
-[ -f "$CACHE/libgdbm.deb" ] && [ -s "$CACHE/libgdbm.deb" ] && ok "  libgdbm (cached)" || \
-    dl "${DEBIAN_MIRROR}/g/gdbm/${GDBM_DEB}" "$CACHE/libgdbm.deb" "libgdbm" || \
-    dl "${DEBIAN_DEB}/g/gdbm/${GDBM_DEB}" "$CACHE/libgdbm.deb" "libgdbm (alt)" || \
-    warn "  libgdbm download failed"
-
-# libgdbm-compat (dbm.gnu / gdbm module)
-GDBMC_DEB="libgdbm-compat4t64_1.26-1+b2_arm64.deb"
-[ -f "$CACHE/libgdbmc.deb" ] && [ -s "$CACHE/libgdbmc.deb" ] && ok "  libgdbm-compat (cached)" || \
-    dl "${DEBIAN_MIRROR}/g/gdbm/${GDBMC_DEB}" "$CACHE/libgdbmc.deb" "libgdbm-compat" || \
-    dl "${DEBIAN_DEB}/g/gdbm/${GDBMC_DEB}" "$CACHE/libgdbmc.deb" "libgdbm-compat (alt)" || \
-    warn "  libgdbm-compat download failed"
-
-# libmagic (file command dependency)
-[ -f "$CACHE/libmagic.deb" ] && [ -s "$CACHE/libmagic.deb" ] && ok "  libmagic (cached)" || \
-    dl "${DEBIAN_MIRROR}/f/file/libmagic1t64_5.47-4_arm64.deb" "$CACHE/libmagic.deb" "libmagic" || \
-    dl "${DEBIAN_DEB}/f/file/libmagic1t64_5.47-4_arm64.deb" "$CACHE/libmagic.deb" "libmagic (alt)" || \
-    warn "  libmagic download failed"
-[ -f "$CACHE/libmagic-mgc.deb" ] && [ -s "$CACHE/libmagic-mgc.deb" ] && ok "  libmagic-mgc (cached)" || \
-    dl "${DEBIAN_MIRROR}/f/file/libmagic-mgc_5.47-4_arm64.deb" "$CACHE/libmagic-mgc.deb" "libmagic-mgc" || \
-    dl "${DEBIAN_DEB}/f/file/libmagic-mgc_5.47-4_arm64.deb" "$CACHE/libmagic-mgc.deb" "libmagic-mgc (alt)" || \
-    warn "  libmagic-mgc download failed"
-
-# pip wheel
-PIP_DEB="python3-pip-whl_26.1.2+dfsg-1_all.deb"
-[ -f "$CACHE/pip.deb" ] && [ -s "$CACHE/pip.deb" ] && ok "  pip (cached)" || \
-    dl "${DEBIAN_MIRROR}/p/python-pip/${PIP_DEB}" "$CACHE/pip.deb" "pip" || \
-    dl "${DEBIAN_DEB}/p/python-pip/${PIP_DEB}" "$CACHE/pip.deb" "pip (alt)" || \
-    warn "  pip download failed"
-
-# ============================================================
-# 2.5 Tools (nano, less, file, tree)
-# ============================================================
-echo ""
-info "[2.5/5] Downloading tools..."
-
-# nano (text editor)
-[ -f "$CACHE/nano.deb" ] && [ -s "$CACHE/nano.deb" ] && ok "  nano (cached)" || \
-    dl "${DEBIAN_MIRROR}/n/nano/nano_9.0-1_arm64.deb" "$CACHE/nano.deb" "nano" || \
-    dl "${DEBIAN_DEB}/n/nano/nano_9.0-1_arm64.deb" "$CACHE/nano.deb" "nano (alt)" || \
-    warn "  nano download failed"
-
-# less (pager)
-[ -f "$CACHE/less.deb" ] && [ -s "$CACHE/less.deb" ] && ok "  less (cached)" || \
-    dl "${DEBIAN_MIRROR}/l/less/less_668-1+b1_arm64.deb" "$CACHE/less.deb" "less" || \
-    dl "${DEBIAN_DEB}/l/less/less_668-1+b1_arm64.deb" "$CACHE/less.deb" "less (alt)" || \
-    warn "  less download failed"
-
-# file (file type detection)
-[ -f "$CACHE/file.deb" ] && [ -s "$CACHE/file.deb" ] && ok "  file (cached)" || \
-    dl "${DEBIAN_MIRROR}/f/file/file_5.47-4_arm64.deb" "$CACHE/file.deb" "file" || \
-    dl "${DEBIAN_DEB}/f/file/file_5.47-4_arm64.deb" "$CACHE/file.deb" "file (alt)" || \
-    warn "  file download failed"
-
-# tree (directory listing)
-[ -f "$CACHE/tree.deb" ] && [ -s "$CACHE/tree.deb" ] && ok "  tree (cached)" || \
-    dl "${DEBIAN_MIRROR}/t/tree/tree_2.3.2-1_arm64.deb" "$CACHE/tree.deb" "tree" || \
-    dl "${DEBIAN_DEB}/t/tree/tree_2.3.2-1_arm64.deb" "$CACHE/tree.deb" "tree (alt)" || \
-    warn "  tree download failed"
-
-# ============================================================
-# 2.6 Git + dependencies
-# ============================================================
-echo ""
-info "[2.6/6] Downloading git..."
-
-for dep in \
-    "git|g/git/git_2.39.5-0+deb12u3_arm64.deb|git" \
-    "libcurl3|c/curl/libcurl3-gnutls_7.88.1-10+deb12u14_arm64.deb|libcurl3" \
-    "libssh2|l/libssh2/libssh2-1_1.10.0-3+b1_arm64.deb|libssh2" \
-    "libpsl|l/libpsl/libpsl5_0.21.2-1_arm64.deb|libpsl" \
-    "libpcre2|p/pcre2/libpcre2-8-0_10.42-1_arm64.deb|libpcre2" \
-    "libnghttp2|n/nghttp2/libnghttp2-14_1.52.0-1+deb12u3_arm64.deb|libnghttp2" \
-    "librtmp|r/rtmpdump/librtmp1_2.4+20151223.gitfa8646d.1-2+b2_arm64.deb|librtmp" \
-    "libbrotli|b/brotli/libbrotli1_1.0.9-2+b2_arm64.deb|libbrotli" \
-    "libgnutls|g/gnutls/libgnutls30_3.7.9-2+deb12u3_arm64.deb|libgnutls" \
-    "libtasn1|l/libtasn1-6/libtasn1-6_4.19.0-3+deb12u1_arm64.deb|libtasn1" \
-    "libp11kit|p/p11-kit/libp11-kit0_0.24.1-2_arm64.deb|libp11kit" \
-    "libidn2|l/libidn2/libidn2-0_2.3.7-2+deb12u1_arm64.deb|libidn2" \
-    "libunistring|l/libunistring/libunistring2_1.0-2_arm64.deb|libunistring" \
-    "libgmp|g/gmp/libgmp10_6.2.1+dfsg-2+deb12u1_arm64.deb|libgmp" \
-    "libnettle|n/nettle/libnettle8_3.8.1-2_arm64.deb|libnettle" \
-    "libhogweed|n/nettle/libhogweed6_3.8.1-2_arm64.deb|libhogweed" \
-    "libgssapi|k/krb5/libgssapi-krb5-2_1.20.1-2+deb12u4_arm64.deb|libgssapi" \
-    "libkrb5|k/krb5/libkrb5-3_1.20.1-2+deb12u4_arm64.deb|libkrb5" \
-    "libk5crypto|k/krb5/libk5crypto3_1.20.1-2+deb12u4_arm64.deb|libk5crypto" \
-    "libkrb5support|k/krb5/libkrb5support0_1.20.1-2+deb12u4_arm64.deb|libkrb5support" \
-    "libcomerr|e/e2fsprogs/libcom-err2_1.46.2-2_arm64.deb|libcomerr" \
-    "libsasl2|c/cyrus-sasl2/libsasl2-2_2.1.28+dfsg-10_arm64.deb|libsasl2" \
-    "libldap|o/openldap/libldap-2.5-0_2.5.13+dfsg-5_arm64.deb|libldap" \
-    "libkeyutils|k/keyutils/libkeyutils1_1.6.3-2_arm64.deb|libkeyutils"; do
-    IFS='|' read -r name path file <<< "$dep"
-    if [ -f "$CACHE/${file}.deb" ] && [ -s "$CACHE/${file}.deb" ]; then
-        # Validate cached deb
-        local magic=$(dd if="$CACHE/${file}.deb" bs=8 count=1 2>/dev/null)
-        if [ "$magic" = "!<arch>" ]; then
-            ok "  $name (cached)"
-            continue
+        
+        (
+            # Resolve latest version
+            local url_base="$DEBIAN_MIRROR"
+            local html=$(curl -sL $CURL_PROXY --connect-timeout 10 --max-time 15 --retry 3 "$url_base/$path_prefix/" 2>/dev/null)
+            local deb=$(echo "$html" | grep -oE "$regex" | grep -v "\-dbg" | grep -v "\-dev" | grep -v "udeb" | sort -V | tail -1)
+            deb="${deb%%.deb*}.deb"
+            
+            if [ -z "$deb" ] || [ "$deb" = ".deb" ]; then
+                url_base="$DEBIAN_DEB"
+                html=$(curl -sL $CURL_PROXY --connect-timeout 10 --max-time 15 --retry 3 "$url_base/$path_prefix/" 2>/dev/null)
+                deb=$(echo "$html" | grep -oE "$regex" | grep -v "\-dbg" | grep -v "\-dev" | grep -v "udeb" | sort -V | tail -1)
+                deb="${deb%%.deb*}.deb"
+            fi
+            
+            if [ -z "$deb" ] || [ "$deb" = ".deb" ]; then
+                exit 1
+            fi
+            
+            local url="$url_base/$path_prefix/$deb"
+            curl -sL $CURL_PROXY --connect-timeout 20 --max-time 600 --retry 3 -o "$CACHE/${file_out}.deb" "$url" 2>/dev/null
+            if [ $? -ne 0 ] || [ ! -s "$CACHE/${file_out}.deb" ]; then
+                if [ "$url_base" != "$DEBIAN_DEB" ]; then
+                    url="$DEBIAN_DEB/$path_prefix/$deb"
+                    curl -sL $CURL_PROXY --connect-timeout 20 --max-time 600 --retry 3 -o "$CACHE/${file_out}.deb" "$url" 2>/dev/null
+                fi
+            fi
+            
+            local magic=$(dd if="$CACHE/${file_out}.deb" bs=8 count=1 2>/dev/null)
+            if [ "$magic" != "!<arch>" ]; then
+                rm -f "$CACHE/${file_out}.deb" 2>/dev/null
+                exit 1
+            fi
+            exit 0
+        ) &
+        
+        local cpid=$!
+        pids="$pids $cpid"
+        echo "$name" > "$CACHE/.pid_$cpid"
+        count=$((count+1))
+        
+        sleep 0.05
+    done << 'EOF_DEPS'
+libc6,g/glibc,libc6_[^"]+_arm64\.deb,libc6
+libstdc++,g/gcc-14,libstdc\+\+6_[^"]+_arm64\.deb,libstdcpp
+libgcc,g/gcc-14,libgcc-s1_[^"]+_arm64\.deb,libgcc
+bash,b/bash,bash_[^"]+_arm64\.deb,bash
+libtinfo,n/ncurses,libtinfo6_[^"]+_arm64\.deb,libtinfo
+python3,p/python3.13,python3.13-minimal_[^"]+_arm64\.deb,python3
+libpython-min,p/python3.13,libpython3.13-minimal_[^"]+_arm64\.deb,libpython-min
+libpython-std,p/python3.13,libpython3.13-stdlib_[^"]+_arm64\.deb,libpython-std
+zlib,z/zlib,zlib1g_[^"]+_arm64\.deb,zlib
+libexpat,e/expat,libexpat1_[^"]+_arm64\.deb,expat
+libssl,o/openssl,libssl3t64_[^"]+_arm64\.deb,libssl
+libzstd,libz/libzstd,libzstd1_[^"]+_arm64\.deb,libzstd
+libffi,libf/libffi,libffi8_[^"]+_arm64\.deb,libffi
+libsqlite3,s/sqlite3,libsqlite3-0_[^"]+_arm64\.deb,libsqlite3
+libbz2,b/bzip2,libbz2-1.0_[^"]+_arm64\.deb,libbz2
+liblzma,x/xz-utils,liblzma5_[^"]+_arm64\.deb,liblzma
+libreadline,r/readline,libreadline8t64_[^"]+_arm64\.deb,libreadline
+libncursesw,n/ncurses,libncursesw6_[^"]+_arm64\.deb,libncursesw
+libgdbm,g/gdbm,libgdbm6_[^"]+_arm64\.deb,libgdbm
+libgdbm-compat,g/gdbm,libgdbm-compat4t64_[^"]+_arm64\.deb,libgdbmc
+libmagic,f/file,libmagic1t64_[^"]+_arm64\.deb,libmagic
+libmagic-mgc,f/file,libmagic-mgc_[^"]+_(arm64|all)\.deb,libmagic-mgc
+pip,p/python-pip,python3-pip_[^"]+_all\.deb,pip
+nano,n/nano,nano_[^"]+_arm64\.deb,nano
+less,l/less,less_[^"]+_arm64\.deb,less
+file,f/file,file_[^"]+_arm64\.deb,file
+tree,t/tree,tree_[^"]+_arm64\.deb,tree
+git,g/git,git_[^"]+_arm64\.deb,git
+libcurl3,c/curl,libcurl3t64-gnutls_[^"]+_arm64\.deb,libcurl3
+libssh2,libs/libssh2,libssh2-1[^"]*_arm64\.deb,libssh2
+libpsl,libp/libpsl,libpsl5[^"]*_arm64\.deb,libpsl
+libpcre2,p/pcre2,libpcre2-8-0_[^"]+_arm64\.deb,libpcre2
+libnghttp2,n/nghttp2,libnghttp2-14_[^"]+_arm64\.deb,libnghttp2
+librtmp,r/rtmpdump,librtmp1_[^"]+_arm64\.deb,librtmp
+libbrotli,b/brotli,libbrotli1_[^"]+_arm64\.deb,libbrotli
+libgnutls,g/gnutls28,libgnutls30[^"]*_arm64\.deb,libgnutls
+libtasn1,libt/libtasn1-6,libtasn1-6_[^"]+_arm64\.deb,libtasn1
+libp11kit,p/p11-kit,libp11-kit0_[^"]+_arm64\.deb,libp11kit
+libidn2,libi/libidn2,libidn2-0_[^"]+_arm64\.deb,libidn2
+libunistring,libu/libunistring,libunistring[0-9]+_[^"]+_arm64\.deb,libunistring
+libgmp,g/gmp,libgmp10_[^"]+_arm64\.deb,libgmp
+libnettle,n/nettle,libnettle[0-9]+[^"]*_arm64\.deb,libnettle
+libhogweed,n/nettle,libhogweed[0-9]+[^"]*_arm64\.deb,libhogweed
+libgssapi,k/krb5,libgssapi-krb5-2_[^"]+_arm64\.deb,libgssapi
+libkrb5,k/krb5,libkrb5-3_[^"]+_arm64\.deb,libkrb5
+libk5crypto,k/krb5,libk5crypto3_[^"]+_arm64\.deb,libk5crypto
+libkrb5support,k/krb5,libkrb5support0_[^"]+_arm64\.deb,libkrb5support
+libcomerr,e/e2fsprogs,libcom-err2_[^"]+_arm64\.deb,libcomerr
+libsasl2,c/cyrus-sasl2,libsasl2-2_[^"]+_arm64\.deb,libsasl2
+libldap,o/openldap,libldap-2.5-0_[^"]+_arm64\.deb,libldap
+libkeyutils,k/keyutils,libkeyutils1_[^"]+_arm64\.deb,libkeyutils
+EOF_DEPS
+    
+    if [ $count -gt 0 ]; then
+        info "  Waiting for $count downloads to complete..."
+        local has_err=0
+        for pid in $pids; do
+            local name=$(cat "$CACHE/.pid_$pid" 2>/dev/null)
+            if wait $pid; then
+                ok "  $name"
+            else
+                warn "  $name (failed to resolve or download)"
+                has_err=1
+            fi
+            rm -f "$CACHE/.pid_$pid"
+        done
+        if [ $has_err -ne 0 ]; then
+            error "Some dependencies failed to download."
+            exit 1
         fi
-        warn "  $name cached deb corrupt, re-downloading..."
     fi
-    dl "${DEBIAN_DEB}/${path}" "$CACHE/${file}.deb" "$name" || \
-        dl "${DEBIAN_MIRROR}/${path}" "$CACHE/${file}.deb" "$name (alt)" || \
-        warn "  $name download failed"
-done
+}
+
+download_deps_parallel
 
 # ============================================================
 # 3. Extract & install

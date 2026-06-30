@@ -206,6 +206,13 @@ rm -f /data/adb/ksu/bin/mimo /data/adb/ksu/bin/bash /data/adb/ksu/bin/python3 /d
 
 ## Changelog
 
+### v1.1.0
+
+- 🚀 **Parallel Downloading**: Completely revamped dependency fetching using concurrent background jobs for all 51 Debian packages. Reduces download time from ~5-10 minutes to under 2 minutes.
+- 🧠 **Dynamic Version Resolution**: No longer hardcodes Debian package versions. The script automatically parses the latest `arm64` package versions directly from the Debian mirrors via regex.
+- 🛡️ **Smart Mirror Fallback**: Uses `mirrors.ustc.edu.cn` by default but dynamically falls back to `deb.debian.org` per package if an architecture build is missing or times out.
+- ⏱️ **Robust Network Handling**: Added `--retry 3` and `--max-time` configurations for both HTML parsing and `.deb` downloads to gracefully handle temporary proxy drops or rate limits without hanging.
+
 ### v1.0.4
 
 - 🚀 **Git support**: install git with all dependencies (HTTPS/SSH via proot)
